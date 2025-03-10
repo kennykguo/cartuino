@@ -5,21 +5,21 @@
       "name": "RISC-V Debug",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/print.elf", // Changed from display.elf to print.elf
+      "program": "${workspaceFolder}/print.elf",
       "args": [],
-      "stopAtEntry": true,
+      "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
       "environment": [],
       "externalConsole": false,
       "MIMode": "gdb",
       "miDebuggerPath": "C:/intelFPGA/QUARTUS_Lite_V23.1/riscfree/toolchain/riscv32-unknown-elf/bin/riscv32-unknown-elf-gdb.exe",
       "miDebuggerServerAddress": "localhost:2454",
+      "logging": {
+        "engineLogging": true,
+        "trace": true,
+        "traceResponse": true
+      },
       "setupCommands": [
-        {
-          "description": "Enable pretty-printing for gdb",
-          "text": "-enable-pretty-printing",
-          "ignoreFailures": true
-        },
         {
           "description": "Set mstatus register",
           "text": "set $mstatus=0",
@@ -31,8 +31,8 @@
           "ignoreFailures": false
         },
         {
-          "text": "file ${workspaceFolder}/print.elf", // Changed from display.elf to print.elf
-          "description": "Load executable",
+          "description": "Load executable file",
+          "text": "file ${workspaceFolder}/print.elf",
           "ignoreFailures": false
         },
         {
@@ -44,8 +44,19 @@
           "description": "Set PC to _start",
           "text": "set $pc=_start",
           "ignoreFailures": false
+        },
+        {
+          "description": "Show PC register",
+          "text": "info reg pc",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Enable pretty-printing",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
         }
-      ]
+      ],
+      "preLaunchTask": "Start GDB Server"
     }
   ]
 }
