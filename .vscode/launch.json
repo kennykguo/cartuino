@@ -5,14 +5,14 @@
       "name": "RISC-V Debug",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}\\print.elf",
+      "program": "${workspaceFolder}/print.elf",
       "args": [],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
       "environment": [],
       "externalConsole": false,
       "MIMode": "gdb",
-      "miDebuggerPath": "C:\\intelFPGA\\QUARTUS_Lite_V23.1\\riscfree\\toolchain\\riscv32-unknown-elf\\bin\\riscv32-unknown-elf-gdb.exe",
+      "miDebuggerPath": "C:/intelFPGA/QUARTUS_Lite_V23.1/riscfree/toolchain/riscv32-unknown-elf/bin/riscv32-unknown-elf-gdb.exe",
       "miDebuggerServerAddress": "localhost:2454",
       "logging": {
         "engineLogging": true,
@@ -32,7 +32,7 @@
         },
         {
           "description": "Load executable file",
-          "text": "file \"${workspaceFolder}\\print.elf\"",
+          "text": "file \"${workspaceFolder}/print.elf\"",
           "ignoreFailures": false
         },
         {
