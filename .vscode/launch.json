@@ -2,12 +2,50 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "C/C++ Runner: Debug Session",
-      "type": "lldb",
+      "name": "RISC-V Debug",
+      "type": "cppdbg",
       "request": "launch",
+      "program": "${workspaceFolder}/print.elf", // Changed from display.elf to print.elf
       "args": [],
-      "cwd": "/Users/kenny/Developer/vscode/cartrl/Using_GDB_Nios_V_Design_Files_UofT/display_C",
-      "program": "/Users/kenny/Developer/vscode/cartrl/Using_GDB_Nios_V_Design_Files_UofT/display_C/build/Debug/outDebug"
+      "stopAtEntry": true,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "C:/intelFPGA/QUARTUS_Lite_V23.1/riscfree/toolchain/riscv32-unknown-elf/bin/riscv32-unknown-elf-gdb.exe",
+      "miDebuggerServerAddress": "localhost:2454",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Set mstatus register",
+          "text": "set $mstatus=0",
+          "ignoreFailures": false
+        },
+        {
+          "description": "Set mtvec register",
+          "text": "set $mtvec=0",
+          "ignoreFailures": false
+        },
+        {
+          "text": "file ${workspaceFolder}/print.elf", // Changed from display.elf to print.elf
+          "description": "Load executable",
+          "ignoreFailures": false
+        },
+        {
+          "description": "Load binary",
+          "text": "load",
+          "ignoreFailures": false
+        },
+        {
+          "description": "Set PC to _start",
+          "text": "set $pc=_start",
+          "ignoreFailures": false
+        }
+      ]
     }
   ]
 }
