@@ -1,0 +1,53 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Compile RISC-V Program",
+        "type": "shell",
+        "command": "make COMPILE",
+        "group": {
+          "kind": "build",
+          "isDefault": true
+        },
+        "problemMatcher": ["$gcc"]
+      },
+      {
+        "label": "Start GDB Server",
+        "type": "shell",
+        "command": "C:/intelFPGA/QUARTUS_Lite_V23.1/riscfree/debugger/gdbserver-riscv/ash-riscv-gdb-server.exe --device 02D120DD --gdb-port 2454 --instance 1 --probe-type USB-Blaster-2 --transport-type jtag --auto-detect true",
+        "isBackground": true,
+        "problemMatcher": [
+          {
+            "pattern": [
+              {
+                "regexp": ".",
+                "file": 1,
+                "location": 2,
+                "message": 3
+              }
+            ],
+            "background": {
+              "activeOnStart": true,
+              "beginsPattern": ".",
+              "endsPattern": "."
+            }
+          }
+        ]
+      },
+      {
+        "label": "Program DE1-SoC",
+        "type": "shell",
+        "command": "make DE1-SoC"
+      },
+      {
+        "label": "Program DE10-Lite",
+        "type": "shell",
+        "command": "make DE10-Lite"
+      },
+      {
+        "label": "Clean",
+        "type": "shell",
+        "command": "make CLEAN"
+      }
+    ]
+  }

@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "/Users/kenny/Developer/vscode/cartrl/Using_GDB_Nios_V_Design_Files_UofT/display_C",
+      "program": "/Users/kenny/Developer/vscode/cartrl/Using_GDB_Nios_V_Design_Files_UofT/display_C/build/Debug/outDebug"
+    }
+  ]
+}
