@@ -14,11 +14,6 @@
       "MIMode": "gdb",
       "miDebuggerPath": "C:/intelFPGA/QUARTUS_Lite_V23.1/riscfree/toolchain/riscv32-unknown-elf/bin/riscv32-unknown-elf-gdb.exe",
       "miDebuggerServerAddress": "localhost:2454",
-      "logging": {
-        "engineLogging": true,
-        "trace": true,
-        "traceResponse": true
-      },
       "setupCommands": [
         {
           "description": "Set mstatus register",
@@ -31,8 +26,8 @@
           "ignoreFailures": false
         },
         {
-          "description": "Load executable file",
-          "text": "file \"${workspaceFolder}/print.elf\"",
+          "description": "Load program",
+          "text": "file print.elf",
           "ignoreFailures": false
         },
         {
@@ -44,19 +39,8 @@
           "description": "Set PC to _start",
           "text": "set $pc=_start",
           "ignoreFailures": false
-        },
-        {
-          "description": "Show PC register",
-          "text": "info reg pc",
-          "ignoreFailures": true
-        },
-        {
-          "description": "Enable pretty-printing",
-          "text": "-enable-pretty-printing",
-          "ignoreFailures": true
         }
-      ],
-      "preLaunchTask": "Start GDB Server"
+      ]
     }
   ]
 }
