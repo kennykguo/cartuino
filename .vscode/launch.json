@@ -5,16 +5,20 @@
       "name": "RISC-V Debug",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/print.elf",
-      "args": [],
+      "program": "print.elf",
+      "miDebuggerPath": "C:/intelFPGA/QUARTUS_Lite_V23.1/riscfree/toolchain/riscv32-unknown-elf/bin/riscv32-unknown-elf-gdb.exe",
+      "miDebuggerArgs": "-silent",
+      "miDebuggerServerAddress": "localhost:2454",
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
-      "environment": [],
       "externalConsole": false,
       "MIMode": "gdb",
-      "miDebuggerPath": "C:/intelFPGA/QUARTUS_Lite_V23.1/riscfree/toolchain/riscv32-unknown-elf/bin/riscv32-unknown-elf-gdb.exe",
-      "miDebuggerServerAddress": "localhost:2454",
       "setupCommands": [
+        {
+          "description": "Connect to target",
+          "text": "target remote:2454",
+          "ignoreFailures": false
+        },
         {
           "description": "Set mstatus register",
           "text": "set $mstatus=0",
@@ -27,17 +31,17 @@
         },
         {
           "description": "Load program",
-          "text": "file print.elf",
-          "ignoreFailures": false
-        },
-        {
-          "description": "Load binary",
           "text": "load",
           "ignoreFailures": false
         },
         {
           "description": "Set PC to _start",
           "text": "set $pc=_start",
+          "ignoreFailures": false
+        },
+        {
+          "description": "Show PC register",
+          "text": "info reg pc",
           "ignoreFailures": false
         }
       ]
