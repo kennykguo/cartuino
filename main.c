@@ -567,7 +567,6 @@ void update_display(int episode, int steps, float reward) {
     write_to_vga(2, 12, buffer);
 }
 
-
 // May need to add buffer times to devices
 int main(void) {
     printf("Initializing pointers to I/O devices...\n");

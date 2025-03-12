@@ -13,8 +13,8 @@
 #define IR_SENSOR_2  A1 // Second IR sensor analog input
 
 // Encoder pins for angle measurement
-#define ENCODER_A    2  // Encoder phase A (interrupt pin)
-#define ENCODER_B    3  // Encoder phase B (interrupt pin)
+#define ENCODER_A  2  // Encoder phase A (interrupt pin)
+#define ENCODER_B  3  // Encoder phase B (interrupt pin)
 
 // UART pins for DE1-SoC communication
 // Arduino TX connects to DE1-SoC RX (JP1 pin D0 or JP2 pin D0)
@@ -52,6 +52,7 @@ boolean is_failed = false;
 
 // Software serial for DE1-SoC communication
 #include <SoftwareSerial.h>
+
 SoftwareSerial de1SocSerial(DE1_SOC_TX, DE1_SOC_RX); // RX, TX
 
 void setup() {
