@@ -1,14 +1,14 @@
-// Cartpole PPO Implementation for DE1-SOC
-// Using JP1 expansion header for UART communication with Arduino
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <string.h>
+#include "address_map.h"
 
-// Include address map for hardware locations
-#include "address_map_niosv.h"
-
-// Constants for PPO algorithm
+// Hyperparameters
 #define STATE_DIM 4
 #define ACTION_DIM 2
 #define HIDDEN_DIM 32
-#define BATCH_SIZE 128
+// #define BATCH_SIZE 128
 #define GAMMA 0.99f
 #define LAMBDA 0.95f
 #define CLIP_EPSILON 0.2f
@@ -17,7 +17,7 @@
 #define MAX_TIMESTEPS 500
 #define PPO_EPOCHS 4
 
-// Training/Inference modes
+// Training/inference mode
 #define MODE_TRAIN 0
 #define MODE_INFERENCE 1
 
@@ -32,7 +32,7 @@
 #define CLOCK_RATE 100000000    // 100MHz DE1-SoC system clock
 #define BIT_PERIOD (CLOCK_RATE / UART_BAUD_RATE)
 
-// Neural Network Structure using arrays only
+// Neural Network Structure
 typedef struct {
     // Policy network
     float weights1[STATE_DIM][HIDDEN_DIM];  // Input layer to hidden
@@ -73,109 +73,27 @@ int current_mode = MODE_TRAIN;
 int episode_count = 0;
 int best_steps = 0;
 
-// Math functions (replace standard library functions)
-float my_abs(float x) {
-    return x < 0 ? -x : x;
-}
-
-float my_max(float a, float b) {
-    return a > b ? a : b;
-}
-
-float my_min(float a, float b) {
-    return a < b ? a : b;
-}
-
-// Fast approximation of exponential function
-float my_exp(float x) {
-    // Taylor series approximation for e^x
-    if (x < -5.0f) return 0.0f;  // Prevent underflow
-    
-    float result = 1.0f;
-    float term = 1.0f;
-    
-    for (int i = 1; i < 10; i++) {  // 10 terms is enough for our precision needs
-        term *= x / i;
-        result += term;
-    }
-    
-    return result;
-}
-
-// Fast approximation of logarithm
-float my_log(float x) {
-    // Simple approximation of natural log
-    if (x <= 0.0f) return -10.0f;  // Handle invalid input
-    
-    // Use the property: log(x) = log(a * 2^n) = log(a) + n*log(2)
-    // where 1 <= a < 2
-    
-    float a = x;
-    int n = 0;
-    
-    while (a >= 2.0f) {
-        a *= 0.5f;
-        n++;
-    }
-    
-    while (a < 1.0f) {
-        a *= 2.0f;
-        n--;
-    }
-    
-    // For 1 <= a < 2, use a simple polynomial approximation
-    float a_minus_1 = a - 1.0f;
-    float log_a = a_minus_1 - 0.5f * a_minus_1 * a_minus_1;
-    
-    // log(2) ≈ 0.693147
-    return log_a + n * 0.693147f;
-}
-
-float my_sqrt(float x) {
-    // Newton's method for square root
-    if (x <= 0.0f) return 0.0f;
-    
-    float result = x;
-    for (int i = 0; i < 10; i++) {  // 10 iterations is typically enough
-        result = 0.5f * (result + x / result);
-    }
-    
-    return result;
-}
-
-// Use timer for random number generation
-unsigned int next_random = 1;
-
-void my_srand(unsigned int seed) {
-    next_random = seed;
-}
-
-unsigned int my_rand() {
-    // Simple linear congruential generator
-    next_random = next_random * 1103515245 + 12345;
-    return (unsigned int)(next_random / 65536) % 32768;
-}
-
-float my_rand_float() {
-    return (float)my_rand() / 32768.0f;
-}
-
-// Function to copy memory (replacement for memcpy)
-void my_memcpy(void *dest, void *src, int n) {
-    char *d = (char *)dest;
-    char *s = (char *)src;
-    for (int i = 0; i < n; i++) {
-        d[i] = s[i];
-    }
-}
-
-// Math activation functions
-float relu(float x) {
-    return x > 0.0f ? x : 0.0f;
-}
-
-// UART Functions for JP1 Expansion Port Communication
-// ****************************************************
+// Forward declarations
+void init_jp1_uart();
+void bit_delay();
+void half_bit_delay();
+void uart_tx_byte(unsigned char data);
+void uart_tx_string(char *str);
+int uart_rx_byte(int timeout_ms);
+float relu(float x);
+void policy_forward(float state[STATE_DIM], float probs[ACTION_DIM]);
+float value_forward(float state[STATE_DIM]);
+int sample_action(float probs[ACTION_DIM]);
+float log_prob(float probs[ACTION_DIM], int action);
+void update_network();
+void compute_advantages();
+void init_network();
+void send_action(int action);
+int read_state(float state[STATE_DIM]);
+float calculate_reward(float state[STATE_DIM], int done);
+void normalize_state(float state[STATE_DIM]);
+void write_to_vga(int x, int y, char* text);
+void update_display(int episode, int steps, float reward);
 
 // Initialize the JP1 port for UART communication
 void init_jp1_uart() {
@@ -283,14 +201,22 @@ int uart_rx_byte(int timeout_ms) {
     return rx_data;
 }
 
+// ReLU activation function
+float relu(float x) {
+    return x > 0.0f ? x : 0.0f;
+}
+
 // Neural Network forward pass for policy
 void policy_forward(float state[STATE_DIM], float probs[ACTION_DIM]) {
     float hidden[HIDDEN_DIM];
+    int i, j;
+    float sum_exp = 0.0f;
+    float output[ACTION_DIM];
     
     // Input to hidden layer
-    for (int i = 0; i < HIDDEN_DIM; i++) {
+    for (i = 0; i < HIDDEN_DIM; i++) {
         hidden[i] = 0.0f;
-        for (int j = 0; j < STATE_DIM; j++) {
+        for (j = 0; j < STATE_DIM; j++) {
             hidden[i] += state[j] * nn.weights1[j][i];
         }
         hidden[i] += nn.bias1[i];
@@ -298,23 +224,20 @@ void policy_forward(float state[STATE_DIM], float probs[ACTION_DIM]) {
     }
     
     // Hidden to output layer
-    float output[ACTION_DIM];
-    for (int i = 0; i < ACTION_DIM; i++) {
+    for (i = 0; i < ACTION_DIM; i++) {
         output[i] = 0.0f;
-        for (int j = 0; j < HIDDEN_DIM; j++) {
+        for (j = 0; j < HIDDEN_DIM; j++) {
             output[i] += hidden[j] * nn.weights2[j][i];
         }
         output[i] += nn.bias2[i];
     }
     
     // Softmax activation for probabilities
-    float sum_exp = 0.0f;
-    for (int i = 0; i < ACTION_DIM; i++) {
-        probs[i] = my_exp(output[i]);
+    for (i = 0; i < ACTION_DIM; i++) {
+        probs[i] = exp(output[i]);
         sum_exp += probs[i];
     }
-    
-    for (int i = 0; i < ACTION_DIM; i++) {
+    for (i = 0; i < ACTION_DIM; i++) {
         probs[i] /= sum_exp;
     }
 }
@@ -322,11 +245,13 @@ void policy_forward(float state[STATE_DIM], float probs[ACTION_DIM]) {
 // Neural Network forward pass for value function
 float value_forward(float state[STATE_DIM]) {
     float hidden[HIDDEN_DIM];
+    int i, j;
+    float value = 0.0f;
     
     // Input to hidden layer
-    for (int i = 0; i < HIDDEN_DIM; i++) {
+    for (i = 0; i < HIDDEN_DIM; i++) {
         hidden[i] = 0.0f;
-        for (int j = 0; j < STATE_DIM; j++) {
+        for (j = 0; j < STATE_DIM; j++) {
             hidden[i] += state[j] * nn.value_weights1[j][i];
         }
         hidden[i] += nn.value_bias1[i];
@@ -334,76 +259,75 @@ float value_forward(float state[STATE_DIM]) {
     }
     
     // Hidden to output layer
-    float value = 0.0f;
-    for (int j = 0; j < HIDDEN_DIM; j++) {
+    for (j = 0; j < HIDDEN_DIM; j++) {
         value += hidden[j] * nn.value_weights2[j][0];
     }
     value += nn.value_bias2[0];
-    
     return value;
 }
 
 // Sample action from policy
 int sample_action(float probs[ACTION_DIM]) {
-    float r = my_rand_float();
+    float r = (float)rand() / RAND_MAX;
     if (r < probs[0]) return 0;  // Left
     return 1;                    // Right
 }
 
 // Calculate log probability of action
 float log_prob(float probs[ACTION_DIM], int action) {
-    return my_log(probs[action]);
+    return log(probs[action]);
 }
 
 // Update neural network parameters using simple gradient descent
 void update_network() {
-    // Initialize parameter gradients
     float dw1[STATE_DIM][HIDDEN_DIM] = {0};
     float db1[HIDDEN_DIM] = {0};
     float dw2[HIDDEN_DIM][ACTION_DIM] = {0};
     float db2[ACTION_DIM] = {0};
-    
     float vdw1[STATE_DIM][HIDDEN_DIM] = {0};
     float vdb1[HIDDEN_DIM] = {0};
     float vdw2[HIDDEN_DIM][1] = {0};
     float vdb2[1] = {0};
+    int epoch, t, i, j;
     
     // Perform multiple epochs of updates
-    for (int epoch = 0; epoch < PPO_EPOCHS; epoch++) {
+    for (epoch = 0; epoch < PPO_EPOCHS; epoch++) {
         // Process all experiences in memory
-        for (int t = 0; t < memory.size; t++) {
+        for (t = 0; t < memory.size; t++) {
             float state[STATE_DIM];
-            my_memcpy(state, memory.states[t], sizeof(float) * STATE_DIM);
+            float probs[ACTION_DIM];
+            float current_log_prob, ratio, surrogate1, surrogate2;
+            float policy_loss, value, value_diff, value_loss, loss;
+            
+            memcpy(state, memory.states[t], sizeof(float) * STATE_DIM);
             
             // Forward pass for current policy
-            float probs[ACTION_DIM];
             policy_forward(state, probs);
             
             // Get log probability of the action that was taken
-            float current_log_prob = log_prob(probs, memory.actions[t]);
+            current_log_prob = log_prob(probs, memory.actions[t]);
             
             // Calculate ratio for PPO
-            float ratio = my_exp(current_log_prob - memory.log_probs[t]);
+            ratio = exp(current_log_prob - memory.log_probs[t]);
             
             // Calculate surrogate losses
-            float surrogate1 = ratio * memory.advantages[t];
-            float surrogate2 = my_min(my_max(ratio, 1.0f - CLIP_EPSILON), 1.0f + CLIP_EPSILON) * memory.advantages[t];
+            surrogate1 = ratio * memory.advantages[t];
+            surrogate2 = fmin(fmax(ratio, 1.0f - CLIP_EPSILON), 1.0f + CLIP_EPSILON) * memory.advantages[t];
             
             // Policy loss (negative because we want to maximize it)
-            float policy_loss = -my_min(surrogate1, surrogate2);
+            policy_loss = -fmin(surrogate1, surrogate2);
             
             // Value loss
-            float value = value_forward(state);
-            float value_diff = value - memory.returns[t];
-            float value_loss = 0.5f * value_diff * value_diff;
+            value = value_forward(state);
+            value_diff = value - memory.returns[t];
+            value_loss = 0.5f * value_diff * value_diff;
             
             // Combined loss
-            float loss = policy_loss + 0.5f * value_loss;
+            loss = policy_loss + 0.5f * value_loss;
             
-            // Simple gradient approximation (for demonstration)
-            // In a real implementation, we'd calculate proper gradients
-            for (int i = 0; i < STATE_DIM; i++) {
-                for (int j = 0; j < HIDDEN_DIM; j++) {
+            // Simple gradient approximation
+            for (i = 0; i < STATE_DIM; i++) {
+                for (j = 0; j < HIDDEN_DIM; j++) {
                     dw1[i][j] += state[i] * loss * 0.01f;
                     vdw1[i][j] += state[i] * value_loss * 0.01f;
                 }
@@ -412,25 +336,25 @@ void update_network() {
     }
     
     // Apply gradients to network parameters
-    for (int i = 0; i < STATE_DIM; i++) {
-        for (int j = 0; j < HIDDEN_DIM; j++) {
+    for (i = 0; i < STATE_DIM; i++) {
+        for (j = 0; j < HIDDEN_DIM; j++) {
             nn.weights1[i][j] -= LEARNING_RATE * dw1[i][j] / memory.size;
             nn.value_weights1[i][j] -= LEARNING_RATE * vdw1[i][j] / memory.size;
         }
     }
     
-    for (int i = 0; i < HIDDEN_DIM; i++) {
+    for (i = 0; i < HIDDEN_DIM; i++) {
         nn.bias1[i] -= LEARNING_RATE * db1[i] / memory.size;
         nn.value_bias1[i] -= LEARNING_RATE * vdb1[i] / memory.size;
         
-        for (int j = 0; j < ACTION_DIM; j++) {
+        for (j = 0; j < ACTION_DIM; j++) {
             nn.weights2[i][j] -= LEARNING_RATE * dw2[i][j] / memory.size;
         }
         
         nn.value_weights2[i][0] -= LEARNING_RATE * vdw2[i][0] / memory.size;
     }
     
-    for (int i = 0; i < ACTION_DIM; i++) {
+    for (i = 0; i < ACTION_DIM; i++) {
         nn.bias2[i] -= LEARNING_RATE * db2[i] / memory.size;
     }
     
@@ -440,45 +364,48 @@ void update_network() {
 // Calculate advantages and returns for PPO
 void compute_advantages() {
     float gae = 0.0f;
-    for (int t = memory.size - 1; t >= 0; t--) {
+    int t;
+    
+    for (t = memory.size - 1; t >= 0; t--) {
         float next_value = (t == memory.size - 1) ? 0.0f : memory.values[t + 1];
         float delta = memory.rewards[t] + GAMMA * next_value - memory.values[t];
         gae = delta + GAMMA * LAMBDA * gae;
         memory.advantages[t] = gae;
-memory.returns[t] = memory.advantages[t] + memory.values[t];
+        memory.returns[t] = memory.advantages[t] + memory.values[t];
     }
 }
 
 // Initialize the neural network with small random weights
 void init_network() {
-
-    // Get current timer value for random seed
-    my_srand(*(TIMER_ptr));
+    int i, j;
+    
+    // Get current time for random seed
+    srand(*(TIMER_ptr));
 
     // Xavier initialization for weights
-    float init_range1 = my_sqrt(6.0f / (STATE_DIM + HIDDEN_DIM));
-    float init_range2 = my_sqrt(6.0f / (HIDDEN_DIM + ACTION_DIM));
-    float init_range3 = my_sqrt(6.0f / (HIDDEN_DIM + 1));
+    float init_range1 = sqrt(6.0f / (STATE_DIM + HIDDEN_DIM));
+    float init_range2 = sqrt(6.0f / (HIDDEN_DIM + ACTION_DIM));
+    float init_range3 = sqrt(6.0f / (HIDDEN_DIM + 1));
     
-    for (int i = 0; i < STATE_DIM; i++) {
-        for (int j = 0; j < HIDDEN_DIM; j++) {
-            nn.weights1[i][j] = (2.0f * my_rand_float() - 1.0f) * init_range1;
-            nn.value_weights1[i][j] = (2.0f * my_rand_float() - 1.0f) * init_range1;
+    for (i = 0; i < STATE_DIM; i++) {
+        for (j = 0; j < HIDDEN_DIM; j++) {
+            nn.weights1[i][j] = (2.0f * ((float)rand() / RAND_MAX) - 1.0f) * init_range1;
+            nn.value_weights1[i][j] = (2.0f * ((float)rand() / RAND_MAX) - 1.0f) * init_range1;
         }
     }
     
-    for (int i = 0; i < HIDDEN_DIM; i++) {
+    for (i = 0; i < HIDDEN_DIM; i++) {
         nn.bias1[i] = 0.0f;
         nn.value_bias1[i] = 0.0f;
         
-        for (int j = 0; j < ACTION_DIM; j++) {
-            nn.weights2[i][j] = (2.0f * my_rand_float() - 1.0f) * init_range2;
+        for (j = 0; j < ACTION_DIM; j++) {
+            nn.weights2[i][j] = (2.0f * ((float)rand() / RAND_MAX) - 1.0f) * init_range2;
         }
         
-        nn.value_weights2[i][0] = (2.0f * my_rand_float() - 1.0f) * init_range3;
+        nn.value_weights2[i][0] = (2.0f * ((float)rand() / RAND_MAX) - 1.0f) * init_range3;
     }
     
-    for (int i = 0; i < ACTION_DIM; i++) {
+    for (i = 0; i < ACTION_DIM; i++) {
         nn.bias2[i] = 0.0f;
     }
     
@@ -486,6 +413,7 @@ void init_network() {
 }
 
 // Send an action to the Arduino via JP1 UART
+// Need to ensure consistency with Arduino code!
 void send_action(int action) {
     // Convert action (0,1) to motor command (-1,1)
     int motor_command = action == 0 ? -1 : 1;
@@ -496,20 +424,12 @@ void send_action(int action) {
     // Format command as string
     char command[4];
     if (motor_command < 0) {
-        command[0] = '-';
-        command[1] = '1';
-        command[2] = '\n';
-        command[3] = '\0';
+        sprintf(command, "-1\n");
     } else if (motor_command > 0) {
-        command[0] = '1';
-        command[1] = '\n';
-        command[2] = '\0';
+        sprintf(command, "1\n");
     } else {
-        command[0] = '0';
-        command[1] = '\n';
-        command[2] = '\0';
+        sprintf(command, "0\n");
     }
-    
     // Send the command string via UART
     uart_tx_string(command);
 }
@@ -546,51 +466,12 @@ int read_state(float state[STATE_DIM]) {
         buffer[index++] = (char)c;
     }
     
-    // Parse the CSV data into state variables
+    // Parse the CSV data using sscanf
     // Format from Arduino: cart_pos,cart_vel,pole_angle,pole_ang_vel,done
-    
-    // Simple CSV parsing without sscanf
-    int field = 0;
-    int i = 0;
-    float value = 0.0f;
-    int negative = 0;
-    int decimal = 0;
-    float decimal_pos = 0.1f;
-    
-    while (buffer[i] != '\0' && field < 5) {
-        if (buffer[i] == ',') {
-            // Save the current value
-            if (field < STATE_DIM) {
-                state[field] = negative ? -value : value;
-            } else if (field == 4) {
-                done = (int)value;
-            }
-            
-            // Reset for next field
-            field++;
-            value = 0.0f;
-            negative = 0;
-            decimal = 0;
-            decimal_pos = 0.1f;
-        } else if (buffer[i] == '-') {
-            negative = 1;
-        } else if (buffer[i] == '.') {
-            decimal = 1;
-        } else if (buffer[i] >= '0' && buffer[i] <= '9') {
-            int digit = buffer[i] - '0';
-            if (decimal) {
-                value = value + digit * decimal_pos;
-                decimal_pos *= 0.1f;
-            } else {
-                value = value * 10.0f + digit;
-            }
-        }
-        i++;
-    }
-    
-    // Save the last field if we've reached the end
-    if (field == 4) {
-        done = (int)value;
+    if (sscanf(buffer, "%f,%f,%f,%f,%d", 
+               &state[0], &state[1], &state[2], &state[3], &done) != 5) {
+        // Failed to parse all fields
+        return 1;
     }
     
     return done;
@@ -605,30 +486,31 @@ float calculate_reward(float state[STATE_DIM], int done) {
     float pole_angular_velocity = state[3];
     
     // If episode is done due to failure, give negative reward
-    if (done && (my_abs(pole_angle) > 0.2f || my_abs(cart_position) > 2.4f)) {
+    if (done && (fabs(pole_angle) > 0.2f || fabs(cart_position) > 2.4f)) {
         return -10.0f;
     }
     
     // Otherwise give a positive reward based on how centered the cart and pole are
-    float angle_reward = 1.0f - my_abs(pole_angle) / 0.2f;  // Max at center, min at failure threshold
-    float position_reward = 1.0f - my_abs(cart_position) / 2.4f;  // Max at center, min at failure threshold
+    float angle_reward = 1.0f - fabs(pole_angle) / 0.2f;  // Max at center, min at failure threshold
+    float position_reward = 1.0f - fabs(cart_position) / 2.4f;  // Max at center, min at failure threshold
     
     return angle_reward + position_reward;
 }
 
 // Normalize state variables
+// Need to check these values actually with the program
 void normalize_state(float state[STATE_DIM]) {
     // Normalize position: typical range [-2.4, 2.4] to [-1, 1]
     state[0] /= 2.4f;
     
     // Normalize velocity: clip to [-10, 10] and normalize to [-1, 1]
-    state[1] = my_max(-10.0f, my_min(10.0f, state[1])) / 10.0f;
+    state[1] = fmax(-10.0f, fmin(10.0f, state[1])) / 10.0f;
     
     // Normalize angle: typical range [-0.2, 0.2] to [-1, 1]
     state[2] /= 0.2f;
     
     // Normalize angular velocity: clip to [-10, 10] and normalize to [-1, 1]
-    state[3] = my_max(-10.0f, my_min(10.0f, state[3])) / 10.0f;
+    state[3] = fmax(-10.0f, fmin(10.0f, state[3])) / 10.0f;
 }
 
 // Write to VGA character buffer
@@ -641,88 +523,14 @@ void write_to_vga(int x, int y, char* text) {
     }
 }
 
-// Integer to string conversion (simple replacement for itoa)
-void int_to_str(int num, char* str) {
-    int i = 0;
-    int is_negative = 0;
-    
-    // Handle 0 explicitly
-    if (num == 0) {
-        str[0] = '0';
-        str[1] = '\0';
-        return;
-    }
-    
-    // Handle negative numbers
-    if (num < 0) {
-        is_negative = 1;
-        num = -num;
-    }
-    
-    // Convert to string (reversed)
-    while (num != 0) {
-        int digit = num % 10;
-        str[i++] = digit + '0';
-        num = num / 10;
-    }
-    
-    // Add negative sign if needed
-    if (is_negative) {
-        str[i++] = '-';
-    }
-    
-    // Add null terminator
-    str[i] = '\0';
-    
-    // Reverse the string
-    int start = 0;
-    int end = i - 1;
-    while (start < end) {
-        char temp = str[start];
-        str[start] = str[end];
-        str[end] = temp;
-        start++;
-        end--;
-    }
-}
-
-// Float to string conversion (simplified)
-void float_to_str(float num, char* str, int precision) {
-    // Handle the integer part
-    int integer_part = (int)num;
-    int_to_str(integer_part, str);
-    
-    // Find the decimal point position
-    int i = 0;
-    while (str[i] != '\0') i++;
-    
-    // Add decimal point
-    str[i++] = '.';
-    
-    // Handle the fractional part
-    float fractional_part = my_abs(num - integer_part);
-    for (int j = 0; j < precision; j++) {
-        fractional_part *= 10.0f;
-        int digit = (int)fractional_part;
-        str[i++] = digit + '0';
-        fractional_part -= digit;
-    }
-    
-    // Add null terminator
-    str[i] = '\0';
-}
-
 // Update the VGA display with training stats
 void update_display(int episode, int steps, float reward) {
-    char episode_str[20] = "Episode: ";
-    char steps_str[20] = "Steps: ";
-    char reward_str[20] = "Reward: ";
-    char mode_str[20] = "Mode: ";
-    char num_str[10];
+    char buffer[80];
+    int y, x;
     
     // Clear screen
-    for (int y = 0; y < 60; y++) {
-        for (int x = 0; x < 80; x++) {
+    for (y = 0; y < 60; y++) {
+        for (x = 0; x < 80; x++) {
             *(VGA_CHAR_ptr + (y * 80 + x)) = ' ';
         }
     }
@@ -730,28 +538,18 @@ void update_display(int episode, int steps, float reward) {
     // Write header
     write_to_vga(25, 1, "CARTPOLE RL TRAINING");
     
-    // Write episode
-    int_to_str(episode, num_str);
-    write_to_vga(2, 3, episode_str);
-    write_to_vga(10, 3, num_str);
+    // Write statistics
+    sprintf(buffer, "Episode: %d", episode);
+    write_to_vga(2, 3, buffer);
     
-    // Write steps
-    int_to_str(steps, num_str);
-    write_to_vga(2, 4, steps_str);
-    write_to_vga(8, 4, num_str);
+    sprintf(buffer, "Steps: %d", steps);
+    write_to_vga(2, 4, buffer);
     
-    // Write reward
-    float_to_str(reward, num_str, 2);
-    write_to_vga(2, 5, reward_str);
-    write_to_vga(10, 5, num_str);
+    sprintf(buffer, "Reward: %.2f", reward);
+    write_to_vga(2, 5, buffer);
     
-    // Write mode
-    write_to_vga(2, 6, mode_str);
-    if (current_mode == MODE_TRAIN) {
-        write_to_vga(8, 6, "TRAINING");
-    } else {
-        write_to_vga(8, 6, "INFERENCE");
-    }
+    sprintf(buffer, "Mode: %s", current_mode == MODE_TRAIN ? "TRAINING" : "INFERENCE");
+    write_to_vga(2, 6, buffer);
     
     // Write connection info
     write_to_vga(40, 3, "Wiring Guide:");
@@ -765,102 +563,80 @@ void update_display(int episode, int steps, float reward) {
     write_to_vga(2, 10, "KEY[0]: Reset/Start New Episode");
     
     // Write best performance
-    write_to_vga(2, 12, "Best Steps: ");
-    int_to_str(best_steps, num_str);
-    write_to_vga(14, 12, num_str);
+    sprintf(buffer, "Best Steps: %d", best_steps);
+    write_to_vga(2, 12, buffer);
 }
 
-// Main function
+// May need to add buffer times to devices
 int main(void) {
-    // Initialize pointers to I/O devices
-    JP1_ptr = (int *)JP1_BASE;       // JP1 expansion port for UART communication
-    KEY_ptr = (int *)KEY_BASE;       // Pushbutton KEYs
-    SW_ptr = (int *)SW_BASE;         // Slider switches
-    LEDR_ptr = (int *)LEDR_BASE;     // Red LEDs
-    TIMER_ptr = (int *)TIMER_BASE;   // Interval timer
-    VGA_CHAR_ptr = (char *)FPGA_CHAR_BASE; // VGA character buffer
+    printf("Initializing pointers to I/O devices...\n");
+    JP1_ptr = (int *)JP1_BASE;
+    KEY_ptr = (int *)KEY_BASE;
+    SW_ptr = (int *)SW_BASE;
+    LEDR_ptr = (int *)LEDR_BASE;
+    TIMER_ptr = (int *)TIMER_BASE;
+    VGA_CHAR_ptr = (char *)FPGA_CHAR_BASE;
     
-    // Initialize JP1 expansion port for UART
+    printf("Initializing JP1 expansion port for UART...\n");
     init_jp1_uart();
     
-    // Initialize neural network
+    printf("Initializing neural network...\n");
     init_network();
     
-    // Initialize display
+    printf("Initializing VGA display...\n");
     update_display(0, 0, 0.0f);
     
-    // Main loop
     while (1) {
-        // Check switches for mode
         int sw_value = *SW_ptr;
         current_mode = (sw_value & 0x1) ? MODE_INFERENCE : MODE_TRAIN;
+        printf("Current mode: %s\n", current_mode == MODE_TRAIN ? "TRAIN" : "INFERENCE");
         
-        // Update LED display to show current mode
         *LEDR_ptr = current_mode;
         
-        // Check for KEY press to start/reset
         int key_value = *KEY_ptr;
-        if (key_value & 0x1) {  // KEY[0] pressed
-            // Wait for key release
+        if (key_value & 0x1) {
+            printf("KEY[0] pressed. Starting new episode...\n");
             while (*KEY_ptr & 0x1);
             
-            // Start a new episode
             float total_reward = 0.0f;
             int total_steps = 0;
             
-            // Reset the environment
-            send_action(2);  // Send reset signal
+            printf("Resetting environment...\n");
+            send_action(2);
             
-            // Reset memory
             if (current_mode == MODE_TRAIN) {
                 memory.size = 0;
             }
             
-            // Wait a bit for the reset to complete
             for (int i = 0; i < 1000000; i++);
             
-            // Get initial state
             float state[STATE_DIM];
             int done = read_state(state);
             normalize_state(state);
             
             if (!done) {
-                // Episode loop
                 while (!done && total_steps < MAX_TIMESTEPS) {
-                    // Show activity on LEDR
                     *LEDR_ptr = 1 << (total_steps % 10);
+                    printf("Step %d: Fetching action...\n", total_steps);
                     
-                    // Get action from policy
                     float probs[ACTION_DIM];
                     policy_forward(state, probs);
                     
-                    int action;
-                    if (current_mode == MODE_TRAIN) {
-                        // Training mode: explore with randomness
-                        action = sample_action(probs);
-                    } else {
-                        // Inference mode: choose best action
-                        action = probs[1] > probs[0] ? 1 : 0;
-                    }
+                    int action = (current_mode == MODE_TRAIN) ? sample_action(probs) : (probs[1] > probs[0] ? 1 : 0);
+                    printf("Action taken: %d\n", action);
                     
-                    // Send action to Arduino
                     send_action(action);
                     
-                    // Get next state and reward
+                    // Get the next state to compute the reward
                     float next_state[STATE_DIM];
                     done = read_state(next_state);
                     normalize_state(next_state);
-                    
-                    // Calculate reward
                     float reward = calculate_reward(next_state, done);
                     total_reward += reward;
                     
                     if (current_mode == MODE_TRAIN) {
-                        // Get value estimate
                         float value = value_forward(state);
-                        
-                        // Store experience in memory
-                        my_memcpy(memory.states[memory.size], state, sizeof(float) * STATE_DIM);
+                        memcpy(memory.states[memory.size], state, sizeof(float) * STATE_DIM);
                         memory.actions[memory.size] = action;
                         memory.rewards[memory.size] = reward;
                         memory.values[memory.size] = value;
@@ -868,37 +644,35 @@ int main(void) {
                         memory.size++;
                     }
                     
-                    // Update state
-                    my_memcpy(state, next_state, sizeof(float) * STATE_DIM);
+                    // Copy over the next_state variable to the current state
+                    memcpy(state, next_state, sizeof(float) * STATE_DIM);
                     total_steps++;
                     
-                    // Update display occasionally (not every step to avoid flicker)
+                    // Check on training progress
+                    // Should update the update_display function to display the percentage of dead neurons, or exploding gradients
                     if (total_steps % 10 == 0 || done) {
+                        printf("Updating display: Episode %d, Steps %d, Total Reward %.2f\n", episode_count, total_steps, total_reward);
                         update_display(episode_count, total_steps, total_reward);
                     }
                 }
-                
-                // Update best score if needed
+                // The model ended the episode by failing here
+                // Need to implement functionality where if the model goes too far left or right, then it automatically fails
+
                 if (total_steps > best_steps) {
                     best_steps = total_steps;
                 }
                 
-                // If in training mode, update policy
                 if (current_mode == MODE_TRAIN) {
-                    // Calculate advantages and returns
+                    printf("Computing advantages and updating network...\n");
                     compute_advantages();
-                    
-                    // Update policy
                     update_network();
-                    
-                    // Increment episode counter
                     episode_count++;
                 }
                 
-                // Update final display
+                printf("Final update: Episode %d, Steps %d, Total Reward %.2f\n", episode_count, total_steps, total_reward);
                 update_display(episode_count, total_steps, total_reward);
                 
-                // Wait a bit before allowing next episode
+                // Buffer time
                 for (int i = 0; i < 2000000; i++);
             }
         }
