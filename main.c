@@ -770,97 +770,76 @@ void update_display(int episode, int steps, float reward) {
     write_to_vga(14, 12, num_str);
 }
 
-// Main function
+// May need to add buffer times to devices
 int main(void) {
-    // Initialize pointers to I/O devices
-    JP1_ptr = (int *)JP1_BASE;       // JP1 expansion port for UART communication
-    KEY_ptr = (int *)KEY_BASE;       // Pushbutton KEYs
-    SW_ptr = (int *)SW_BASE;         // Slider switches
-    LEDR_ptr = (int *)LEDR_BASE;     // Red LEDs
-    TIMER_ptr = (int *)TIMER_BASE;   // Interval timer
-    VGA_CHAR_ptr = (char *)FPGA_CHAR_BASE; // VGA character buffer
+    printf("Initializing pointers to I/O devices...\n");
+    JP1_ptr = (int *)JP1_BASE;
+    KEY_ptr = (int *)KEY_BASE;
+    SW_ptr = (int *)SW_BASE;
+    LEDR_ptr = (int *)LEDR_BASE;
+    TIMER_ptr = (int *)TIMER_BASE;
+    VGA_CHAR_ptr = (char *)FPGA_CHAR_BASE;
     
-    // Initialize JP1 expansion port for UART
+    printf("Initializing JP1 expansion port for UART...\n");
     init_jp1_uart();
     
-    // Initialize neural network
+    printf("Initializing neural network...\n");
     init_network();
     
-    // Initialize display
+    printf("Initializing VGA display...\n");
     update_display(0, 0, 0.0f);
     
-    // Main loop
     while (1) {
-        // Check switches for mode
         int sw_value = *SW_ptr;
         current_mode = (sw_value & 0x1) ? MODE_INFERENCE : MODE_TRAIN;
+        printf("Current mode: %s\n", current_mode == MODE_TRAIN ? "TRAIN" : "INFERENCE");
         
-        // Update LED display to show current mode
         *LEDR_ptr = current_mode;
         
-        // Check for KEY press to start/reset
         int key_value = *KEY_ptr;
-        if (key_value & 0x1) {  // KEY[0] pressed
-            // Wait for key release
+        if (key_value & 0x1) {
+            printf("KEY[0] pressed. Starting new episode...\n");
             while (*KEY_ptr & 0x1);
             
-            // Start a new episode
             float total_reward = 0.0f;
             int total_steps = 0;
             
-            // Reset the environment
-            send_action(2);  // Send reset signal
+            printf("Resetting environment...\n");
+            send_action(2);
             
-            // Reset memory
             if (current_mode == MODE_TRAIN) {
                 memory.size = 0;
             }
             
-            // Wait a bit for the reset to complete
             for (int i = 0; i < 1000000; i++);
             
-            // Get initial state
             float state[STATE_DIM];
             int done = read_state(state);
             normalize_state(state);
             
             if (!done) {
-                // Episode loop
                 while (!done && total_steps < MAX_TIMESTEPS) {
-                    // Show activity on LEDR
                     *LEDR_ptr = 1 << (total_steps % 10);
+                    printf("Step %d: Fetching action...\n", total_steps);
                     
-                    // Get action from policy
                     float probs[ACTION_DIM];
                     policy_forward(state, probs);
                     
-                    int action;
-                    if (current_mode == MODE_TRAIN) {
-                        // Training mode: explore with randomness
-                        action = sample_action(probs);
-                    } else {
-                        // Inference mode: choose best action
-                        action = probs[1] > probs[0] ? 1 : 0;
-                    }
+                    int action = (current_mode == MODE_TRAIN) ? sample_action(probs) : (probs[1] > probs[0] ? 1 : 0);
+                    printf("Action taken: %d\n", action);
                     
-                    // Send action to Arduino
                     send_action(action);
                     
-                    // Get next state and reward
+                    // Get the next state to compute the reward
                     float next_state[STATE_DIM];
                     done = read_state(next_state);
                     normalize_state(next_state);
-                    
-                    // Calculate reward
                     float reward = calculate_reward(next_state, done);
                     total_reward += reward;
                     
                     if (current_mode == MODE_TRAIN) {
-                        // Get value estimate
                         float value = value_forward(state);
-                        
-                        // Store experience in memory
-                        my_memcpy(memory.states[memory.size], state, sizeof(float) * STATE_DIM);
+                        memcpy(memory.states[memory.size], state, sizeof(float) * STATE_DIM);
                         memory.actions[memory.size] = action;
                         memory.rewards[memory.size] = reward;
                         memory.values[memory.size] = value;
@@ -868,37 +847,35 @@ int main(void) {
                         memory.size++;
                     }
                     
-                    // Update state
-                    my_memcpy(state, next_state, sizeof(float) * STATE_DIM);
+                    // Copy over the next_state variable to the current state
+                    memcpy(state, next_state, sizeof(float) * STATE_DIM);
                     total_steps++;
                     
-                    // Update display occasionally (not every step to avoid flicker)
+                    // Check on training progress
+                    // Should update the update_display function to display the percentage of dead neurons, or exploding gradients
                     if (total_steps % 10 == 0 || done) {
+                        printf("Updating display: Episode %d, Steps %d, Total Reward %.2f\n", episode_count, total_steps, total_reward);
                         update_display(episode_count, total_steps, total_reward);
                     }
                 }
-                
-                // Update best score if needed
+                // The model ended the episode by failing here
+                // Need to implement functionality where if the model goes too far left or right, then it automatically fails
+
                 if (total_steps > best_steps) {
                     best_steps = total_steps;
                 }
                 
-                // If in training mode, update policy
                 if (current_mode == MODE_TRAIN) {
-                    // Calculate advantages and returns
+                    printf("Computing advantages and updating network...\n");
                     compute_advantages();
-                    
-                    // Update policy
                     update_network();
-                    
-                    // Increment episode counter
                     episode_count++;
                 }
                 
-                // Update final display
+                printf("Final update: Episode %d, Steps %d, Total Reward %.2f\n", episode_count, total_steps, total_reward);
                 update_display(episode_count, total_steps, total_reward);
                 
-                // Wait a bit before allowing next episode
+                // Buffer time
                 for (int i = 0; i < 2000000; i++);
             }
         }
