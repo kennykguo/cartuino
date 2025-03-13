@@ -1,0 +1,37 @@
+PS C:\Users\guokenny\cartrl-main> ./gmake COMPILE       
+
+C:\Users\guokenny\cartrl-main>C:\intelFPGA\QUARTUS_Lite_V23.1\fpgacademy\AMP\bin\make.exe COMPILE 
+Compiling
+C:/intelFPGA/QUARTUS_Lite_V23.1/fpgacademy/AMP/cygwin64/home/compiler/bin/riscv32-unknown-elf-gcc.exe -Wall -c -g -O1 -ffunction-sections -fverbose-asm -fno-inline -gdwarf-2  -march=rv32im_zicsr -mabi=ilp32 main.c -o main.c.o
+main.c: In function ‘uart_rx_byte’:
+main.c:165:9: warning: unused variable ‘data’ [-Wunused-variable]
+  165 |     int data = 0;
+      |         ^~~~
+main.c: In function ‘calculate_reward’:
+main.c:486:11: warning: unused variable ‘pole_angular_velocity’ [-Wunused-variable]
+  486 |     float pole_angular_velocity = state[3];
+      |           ^~~~~~~~~~~~~~~~~~~~~
+main.c:484:11: warning: unused variable ‘cart_velocity’ [-Wunused-variable]
+  484 |     float cart_velocity = state[1];
+      |           ^~~~~~~~~~~~~
+Linking
+C:/intelFPGA/QUARTUS_Lite_V23.1/fpgacademy/AMP/cygwin64/home/compiler/bin/riscv32-unknown-elf-gcc.exe -Wl,--defsym=__stack_pointer$=0x4000000 -Wl,--defsym  -Wl,JTAG_UART_BASE=0xff201000 -lm -march=rv32im_zicsr -mabi=ilp32  main.c.o -o main.elf
+
+/home/compiler/bin/../lib/gcc/riscv32-unknown-elf/13.2.0/../../../../riscv32-unknown-elf/bin/ld: main.c.o: in function `policy_forward':
+/cygdrive/c/Users/guokenny/cartrl-main/main.c:230:(.text.policy_forward+0x13c): undefined reference to `exp'
+/home/compiler/bin/../lib/gcc/riscv32-unknown-elf/13.2.0/../../../../riscv32-unknown-elf/bin/ld: /cygdrive/c/Users/guokenny/cartrl-main/main.c:232:(.text.policy_forward+0x160): undefined reference to `exp'   
+/home/compiler/bin/../lib/gcc/riscv32-unknown-elf/13.2.0/../../../../riscv32-unknown-elf/bin/ld: main.c.o: in function `log_prob':
+/cygdrive/c/Users/guokenny/cartrl-main/main.c:278:(.text.log_prob+0x18): undefined reference to `log'
+/home/compiler/bin/../lib/gcc/riscv32-unknown-elf/13.2.0/../../../../riscv32-unknown-elf/bin/ld: main.c.o: in function `update_network':
+/cygdrive/c/Users/guokenny/cartrl-main/main.c:308:(.text.update_network+0x114): undefined reference to `exp'
+/home/compiler/bin/../lib/gcc/riscv32-unknown-elf/13.2.0/../../../../riscv32-unknown-elf/bin/ld: /cygdrive/c/Users/guokenny/cartrl-main/main.c:311:(.text.update_network+0x134): undefined reference to `fmax'  
+/home/compiler/bin/../lib/gcc/riscv32-unknown-elf/13.2.0/../../../../riscv32-unknown-elf/bin/ld: /cygdrive/c/Users/guokenny/cartrl-main/main.c:311:(.text.update_network+0x144): undefined reference to `fmin'
+/home/compiler/bin/../lib/gcc/riscv32-unknown-elf/13.2.0/../../../../riscv32-unknown-elf/bin/ld: /cygdrive/c/Users/guokenny/cartrl-main/main.c:315:(.text.update_network+0x190): undefined reference to `fmin'  
+/home/compiler/bin/../lib/gcc/riscv32-unknown-elf/13.2.0/../../../../riscv32-unknown-elf/bin/ld: main.c.o: in function `normalize_state':
+/cygdrive/c/Users/guokenny/cartrl-main/main.c:507:(.text.normalize_state+0x48): undefined reference to `fmin'
+/home/compiler/bin/../lib/gcc/riscv32-unknown-elf/13.2.0/../../../../riscv32-unknown-elf/bin/ld: /cygdrive/c/Users/guokenny/cartrl-main/main.c:507:(.text.normalize_state+0x60): undefined reference to `fmax'  
+/home/compiler/bin/../lib/gcc/riscv32-unknown-elf/13.2.0/../../../../riscv32-unknown-elf/bin/ld: /cygdrive/c/Users/guokenny/cartrl-main/main.c:510:(.text.normalize_state+0x9c): undefined reference to `fmin'  
+/home/compiler/bin/../lib/gcc/riscv32-unknown-elf/13.2.0/../../../../riscv32-unknown-elf/bin/ld: /cygdrive/c/Users/guokenny/cartrl-main/main.c:510:(.text.normalize_state+0xac): undefined reference to `fmax'  
+collect2: error: ld returned 1 exit status
+make: *** [main.elf] Error 1
+PS C:\Users\guokenny\cartrl-main> 
