@@ -2,7 +2,7 @@
 // Using JP1 expansion header for UART communication with Arduino
 
 // Include address map for hardware locations
-#include "address_map_niosv.h"
+#include "address_map.h"
 
 // Constants for PPO algorithm
 #define STATE_DIM 4
