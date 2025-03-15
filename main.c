@@ -16,7 +16,6 @@
 #define MAX_EPISODES 30
 #define MAX_TIMESTEPS 500
 #define PPO_EPOCHS 4
-
 // Training/Inference modes
 #define MODE_TRAIN 0
 #define MODE_INFERENCE 1
@@ -24,8 +23,8 @@
 // JP1 UART Configuration - these define which pins we use on the JP1 port
 // According to the DE1-SoC documentation, JP1's base address is 0xFF200060
 // Direction register is at Base+4 (0xFF200064)
-// D0 = RX pin (input to DE1-SoC) connected to Arduino's TX (pin 12)
-// D1 = TX pin (output from DE1-SoC) connected to Arduino's RX (pin 13)
+// D0 = RX pin (input to DE1-SoC) connected to Arduino's TX (pin 1)
+// D1 = TX pin (output from DE1-SoC) connected to Arduino's RX (pin 0)
 #define UART_RX_BIT 0x00000001  // Bit 0 for RX (D0)
 #define UART_TX_BIT 0x00000002  // Bit 1 for TX (D1)
 #define UART_BAUD_RATE 115200

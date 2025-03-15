@@ -3,10 +3,13 @@
 
 // Feather 32u4 has hardware UART on pins D0 (RX) and D1 (TX)
 // No need to redefine pins since we'll use the built-in Serial1
+// DE1 SOC JP1 D1 TO ARDUINO PIN 0
+// DE1 SOC JP1 D0 TO ARDUINO PIN 1
+
 
 // Benchmark parameters
 #define PACKET_SIZE 32  // Size of each test packet in bytes
-#define BAUD_RATE 115200
+#define BAUD_RATE 9600
 
 // We'll use the hardware Serial1 for communication with DE1-SoC
 // Serial will be used for debugging with the computer

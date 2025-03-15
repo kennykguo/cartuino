@@ -1,5 +1,7 @@
 // Arduino Cartpole Controller
 // Interfaces with DE1-SOC via JP1/JP2 expansion header UART
+// SHOULD MODIFY TO USE SERIAL1 when benchmarking script works
+
 
 // Pin definitions for motor control
 #define MOTOR_A_DIR1 5  // Motor A direction pin 1
@@ -20,8 +22,8 @@
 // Arduino TX connects to DE1-SoC RX (JP1 pin D0 or JP2 pin D0)
 // Arduino RX connects to DE1-SoC TX (JP1 pin D1 or JP2 pin D1)
 // Note: You must also connect GND between Arduino and DE1-SoC
-#define DE1_SOC_RX   12 // Arduino TX (output) connects to DE1-SoC RX (input)
-#define DE1_SOC_TX   13 // Arduino RX (input) connects to DE1-SoC TX (output)
+#define DE1_SOC_RX   0 // Arduino TX (output) connects to DE1-SoC RX (input)
+#define DE1_SOC_TX   1 // Arduino RX (input) connects to DE1-SoC TX (output)
 
 // Constants for system
 #define STRIP_WIDTH      0.025  // Width of black/white strips in meters
