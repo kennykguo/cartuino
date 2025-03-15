@@ -1,83 +1,97 @@
-/*
- * IR Sensor Benchmark Script for Adafruit Feather 32u4
- * 
- * This script reads values from a single IR sensor and outputs them to the Serial Monitor
- * for tuning and testing purposes.
- * 
- * Connections:
- * - Red wire: Connect to VBUS (5V) or 3.3V on Feather board
- * - Yellow wire: Connect to any GND pin on Feather board
- * - Orange wire: Connect to analog input pin A0
- */
+// Simple UART Test for Feather 32u4 and DE1-SoC
+// This is a minimal test to verify UART communication
 
-// Define the pin to which the IR sensor's orange wire is connected
-#define IR_SENSOR_PIN A0
+#define BAUD_RATE 115200
 
-// Threshold for determining black vs white/reflective surface
-// You can adjust this value based on your testing results
-#define THRESHOLD 500
+// Test mode
+enum TestMode {
+  IDLE,
+  TEST_ACTIVE
+};
 
-// LED pin for visual feedback
-#define LED_PIN 13  // Built-in LED on the Feather 32u4 (labeled as D13)
+TestMode currentMode = IDLE;
+unsigned long lastBlinkTime = 0;
+unsigned long lastHeartbeatTime = 0;
+unsigned long messageCount = 0;
+unsigned long heartbeatCount = 0;
 
 void setup() {
-  // Initialize serial communication
-  Serial.begin(9600);
-  while (!Serial) {
-    ; // Wait for serial port to connect (needed for native USB devices like the Feather)
+  // Set up serial communication for debugging with computer
+  Serial.begin(BAUD_RATE);
+  
+  // Wait for serial connection to establish
+  delay(3000);
+  
+  Serial.println("==================================");
+  Serial.println("Feather 32u4 Simple UART Test");
+  Serial.println("==================================");
+  
+  // Set up hardware serial for DE1-SoC communication
+  Serial1.begin(BAUD_RATE);
+  
+  // Configure LED pin for status indication
+  pinMode(LED_BUILTIN, OUTPUT);
+  
+  // Blink LED to indicate setup is complete
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(200);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(200);
   }
   
-  // Set up sensor pin as input
-  pinMode(IR_SENSOR_PIN, INPUT);
-  
-  // Set up LED pin as output (for visual feedback)
-  pinMode(LED_PIN, OUTPUT);
-  
-  Serial.println("IR Sensor Benchmark for Feather 32u4");
-  Serial.println("------------------------------------");
-  Serial.println("Raw values will be displayed below.");
-  Serial.println("Higher values typically indicate darker/less reflective surfaces.");
-  Serial.println("Lower values typically indicate lighter/more reflective surfaces.");
-  Serial.println();
-  Serial.println("Current threshold set to: " + String(THRESHOLD));
-  Serial.println("Reading...");
+  Serial.println("Setup complete");
+  Serial.println("Waiting for DE1-SoC communication...");
+  Serial.println("==================================");
 }
 
 void loop() {
-  // Read the raw analog value from the IR sensor
-  int sensorValue = analogRead(IR_SENSOR_PIN);
-  
-  // Determine if the surface is "black" (less reflective) based on threshold
-  bool isBlack = (sensorValue > THRESHOLD);
-  
-  // Track min/max values
-  static int minValue = 1023;
-  static int maxValue = 0;
-  
-  if (sensorValue < minValue) minValue = sensorValue;
-  if (sensorValue > maxValue) maxValue = sensorValue;
-  
-  // Print header every 20 readings for clarity
-  static int readingCount = 0;
-  if (readingCount % 20 == 0) {
-    Serial.println("\n--- IR SENSOR READINGS ---");
-    Serial.println("Raw Value | Detection | Min | Max");
-    Serial.println("--------------------------");
+  // Send heartbeat message to Serial monitor
+  unsigned long currentTime = millis();
+  if (currentTime - lastHeartbeatTime >= 5000) {  // Every 5 seconds
+    heartbeatCount++;
+    Serial.print("Heartbeat #");
+    Serial.print(heartbeatCount);
+    Serial.print(" - Messages received: ");
+    Serial.println(messageCount);
+    lastHeartbeatTime = currentTime;
+    
+    // Send a test message to DE1-SoC
+    Serial.println("Sending test message to DE1-SoC...");
+    Serial1.print("FEATHER_MSG_");
+    Serial1.println(heartbeatCount);
   }
-  readingCount++;
   
-  // Print formatted output
-  Serial.print(sensorValue);
-  Serial.print("\t| ");
-  Serial.print(isBlack ? "BLACK" : "WHITE");
-  Serial.print("\t| ");
-  Serial.print(minValue);
-  Serial.print(" | ");
-  Serial.println(maxValue);
+  // Check for incoming data from DE1-SoC
+  if (Serial1.available() > 0) {
+    // Turn on LED to indicate received data
+    digitalWrite(LED_BUILTIN, HIGH);
+    lastBlinkTime = currentTime;
+    currentMode = TEST_ACTIVE;
+    
+    // Read all available data
+    String message = "";
+    while (Serial1.available() > 0) {
+      char c = Serial1.read();
+      message += c;
+    }
+    
+    // Print received data to Serial monitor
+    Serial.print("Received from DE1-SoC: '");
+    Serial.print(message);
+    Serial.println("'");
+    
+    // Echo back what we received
+    Serial1.print("ECHO:");
+    Serial1.print(message);
+    
+    // Increment message counter
+    messageCount++;
+  }
   
-  // Visual feedback using LED
-  digitalWrite(LED_PIN, isBlack);
-  
-  // Small delay to make the output readable
-  delay(200);
+  // Turn off LED after a delay
+  if (currentMode == TEST_ACTIVE && currentTime - lastBlinkTime >= 100) {
+    digitalWrite(LED_BUILTIN, LOW);
+    currentMode = IDLE;
+  }
 }
