@@ -6,9 +6,8 @@
 #include "address_map.h"
 
 // JP1 UART Configuration
-// JP1 UART Configuration - Updated to use D8 (RX) and D9 (TX)
-#define UART_RX_BIT 0x00000400  // Bit 8 for RX (D8)
-#define UART_TX_BIT 0x00000800  // Bit 9 for TX (D9)
+#define UART_RX_BIT 0x00000001  // Bit 0 for RX (D0)
+#define UART_TX_BIT 0x00000002  // Bit 1 for TX (D1)
 #define UART_BAUD_RATE 9600     // Reduced baud rate for more reliable communication
 #define CLOCK_RATE 100000000    // 100MHz DE1-SoC system clock
 #define BIT_PERIOD (CLOCK_RATE / UART_BAUD_RATE)

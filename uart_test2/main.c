@@ -21,7 +21,7 @@
     #define PIN_TX_NAME "D11"
 #endif
 
-#define UART_BAUD_RATE 2400     // Reduced baud rate for more reliable communication
+#define UART_BAUD_RATE 1200     // Reduced baud rate for more reliable communication
 #define CLOCK_RATE 100000000    // 100MHz DE1-SoC system clock
 #define BIT_PERIOD (CLOCK_RATE / UART_BAUD_RATE)
 
