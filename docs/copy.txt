@@ -1,5 +1,28 @@
+===================================
+DE1-SoC UART Debug Test Started
+===================================
+JP1 UART initialized at 4800 baud
+UART_RX_BIT = 0x00000400, UART_TX_BIT = 0x00000800
+JP1 direction register value: 0x00000800
+JP1 data register value: 0xFFFFFFFF
+BIT_PERIOD = 20833 clock cycles
+RX pin initial state: HIGH
+Test Controls:
+- KEY0: Send test message in current mode
+- KEY1: Run TX pin toggle test
+- KEY2: Run loopback test
+- KEY3: Run direct pin loopback test
+- Switch settings control test mode:
+  SW0=0: Normal mode (short messages)
+  SW0=1: Different test patterns
+===================================
+
+Test mode changed to: 0
+
+KEY2 pressed - Running loopback test
+
 ===== LOOPBACK TEST =====
-Connect DE1-SoC JP1 D1 (TX) to JP1 D0 (RX) physically
+Connect DE1-SoC JP1 D11 (TX) to JP1 D10 (RX) physically
 Sending test characters and checking if they loop back...
 Testing character 'A':
 Sending byte: 0x41 ('A')
@@ -73,3 +96,46 @@ Byte transmission complete
 FAILED: Sent 'E', Received -1 (0xFFFFFFFF)
 Loopback test complete: 0/5 successful
 =========================
+
+
+KEY3 pressed - Running direct pin loopback test
+
+===== DIRECT PIN LOOPBACK TEST =====
+Testing direct connection between TX (0x00000800) and RX (0x00000400) pins
+Initial state: TX pin is HIGH, RX pin is HIGH
+TX HIGH test: TX pin set HIGH, RX pin is HIGH (following)
+TX LOW test: TX pin set LOW, RX pin is LOW (following)
+
+Rapid toggle test (TX HIGHΓåÆLOWΓåÆHIGH, checking RX after each change):
+Toggle 1 HIGH: RX is HIGH (JP1=0xFFFFFFFF)
+Toggle 1 LOW: RX is LOW (JP1=0xFFFFF3FF)
+Toggle 2 HIGH: RX is HIGH (JP1=0xFFFFFFFF)
+Toggle 2 LOW: RX is LOW (JP1=0xFFFFF3FF)
+Toggle 3 HIGH: RX is HIGH (JP1=0xFFFFFFFF)
+Toggle 3 LOW: RX is LOW (JP1=0xFFFFF3FF)
+Toggle 4 HIGH: RX is HIGH (JP1=0xFFFFFFFF)
+Toggle 4 LOW: RX is LOW (JP1=0xFFFFF3FF)
+Toggle 5 HIGH: RX is HIGH (JP1=0xFFFFFFFF)
+Toggle 5 LOW: RX is LOW (JP1=0xFFFFF3FF)
+
+Testing input latching behavior:
+Read 1 after TX HIGH: RX is HIGH (JP1=0xFFFFFFFF)
+Read 2 after TX HIGH: RX is HIGH (JP1=0xFFFFFFFF)
+Read 3 after TX HIGH: RX is HIGH (JP1=0xFFFFFFFF)
+Read 1 after TX LOW: RX is LOW (JP1=0xFFFFF3FF)
+Read 2 after TX LOW: RX is LOW (JP1=0xFFFFF3FF)
+Read 3 after TX LOW: RX is LOW (JP1=0xFFFFF3FF)
+
+Test Summary:
+PASS: RX pin correctly follows TX pin (normal connection)
+====================================
+
+Warning: Missing stop bit (framing error)
+Warning: Missing stop bit (framing error)
+Warning: Missing stop bit (framing error)
+Warning: Missing stop bit (framing error)
+Warning: Missing stop bit (framing error)
+Warning: Missing stop bit (framing error)
+Warning: Missing stop bit (framing error)
+Warning: Missing stop bit (framing error)
+Warning: Missing stop bit (framing error)
