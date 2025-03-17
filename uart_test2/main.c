@@ -76,14 +76,10 @@ void delay_ms(int ms) {
     volatile int i;
     for (i = 0; i < ms * (CLOCK_RATE / 10000); i++);
 }
-
 // Send a single byte over the software UART
 void uart_tx_byte(unsigned char data) {
     int i;
-    // In uart_tx_byte(), after each bit transition:
-    *(JP1_ptr) = tx_data;
-    delay_ms(1);  // Short stabilization delay
-    bit_delay();
+    int tx_data = *(JP1_ptr);
     
     // Print debug info
     printf("Sending byte: 0x%02X ('%c')\n", data, (data >= 32 && data <= 126) ? data : '?');
@@ -91,6 +87,7 @@ void uart_tx_byte(unsigned char data) {
     // Start bit (LOW)
     tx_data &= ~UART_TX_BIT;  // Clear TX bit
     *(JP1_ptr) = tx_data;
+    delay_ms(1);  // Short stabilization delay after bit transition
     printf("TX pin set LOW (start bit)\n");
     bit_delay();
     
@@ -106,19 +103,22 @@ void uart_tx_byte(unsigned char data) {
             printf("TX bit %d: LOW\n", i);
         }
         *(JP1_ptr) = tx_data;
+        delay_ms(1);  // Short stabilization delay after bit transition
         bit_delay();
     }
     
     // Stop bit (HIGH)
     tx_data |= UART_TX_BIT;
     *(JP1_ptr) = tx_data;
+    delay_ms(1);  // Short stabilization delay after bit transition
     printf("TX pin set HIGH (stop bit)\n");
     bit_delay();
     
-    // Extra delay to ensure proper framing
+    // Extra delay for better framing - double the stop bit time
     bit_delay();
     printf("Byte transmission complete\n");
 }
+
 
 // Send a string over the software UART
 void uart_tx_string(char *str) {
