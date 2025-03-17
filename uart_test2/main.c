@@ -9,7 +9,7 @@
 // Using D10/D11 for RX/TX
 #define UART_RX_BIT 0x00000400  // Bit 10 for RX (D10)
 #define UART_TX_BIT 0x00000800  // Bit 11 for TX (D11)
-#define UART_BAUD_RATE 4800     // Reduced baud rate for more reliable communication
+#define UART_BAUD_RATE 2400  // Even slower for more tolerance
 #define CLOCK_RATE 100000000    // 100MHz DE1-SoC system clock
 #define BIT_PERIOD (CLOCK_RATE / UART_BAUD_RATE)
 
@@ -67,7 +67,8 @@ void bit_delay() {
 // Delay for half a bit period
 void half_bit_delay() {
     volatile int i;
-    for (i = 0; i < BIT_PERIOD/2; i++);
+    // Sample at 60% of bit time instead of 50%
+    for (i = 0; i < (BIT_PERIOD*6)/10; i++);
 }
 
 // Simple delay in milliseconds
@@ -79,7 +80,10 @@ void delay_ms(int ms) {
 // Send a single byte over the software UART
 void uart_tx_byte(unsigned char data) {
     int i;
-    int tx_data = *(JP1_ptr);
+    // In uart_tx_byte(), after each bit transition:
+    *(JP1_ptr) = tx_data;
+    delay_ms(1);  // Short stabilization delay
+    bit_delay();
     
     // Print debug info
     printf("Sending byte: 0x%02X ('%c')\n", data, (data >= 32 && data <= 126) ? data : '?');
