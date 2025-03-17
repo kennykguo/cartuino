@@ -6,10 +6,10 @@
 #include "address_map.h"
 
 // JP1 UART Configuration
-// JP1 UART Configuration - Updated to use D8 (RX) and D9 (TX)
-#define UART_RX_BIT 0x00000400  // Bit 8 for RX (D8)
-#define UART_TX_BIT 0x00000800  // Bit 9 for TX (D9)
-#define UART_BAUD_RATE 9600     // Reduced baud rate for more reliable communication
+// Using D10/D11 for RX/TX
+#define UART_RX_BIT 0x00000400  // Bit 10 for RX (D10)
+#define UART_TX_BIT 0x00000800  // Bit 11 for TX (D11)
+#define UART_BAUD_RATE 4800     // Reduced baud rate for more reliable communication
 #define CLOCK_RATE 100000000    // 100MHz DE1-SoC system clock
 #define BIT_PERIOD (CLOCK_RATE / UART_BAUD_RATE)
 
@@ -38,17 +38,24 @@ int current_test_mode = MODE_NORMAL;
 
 // Initialize the JP1 port for UART communication
 void init_jp1_uart() {
-    // Set direction for D0 (RX) as input, D1 (TX) as output
-    *(JP1_ptr + 1) = UART_TX_BIT;  // D1 as output, D0 as input
+    // Set direction for RX as input, TX as output
+    *(JP1_ptr + 1) = UART_TX_BIT;  // TX as output, RX as input
     
     // Set TX pin high (idle state for UART)
-    *(JP1_ptr) = UART_TX_BIT;
+    *(JP1_ptr) |= UART_TX_BIT;
+    
+    // Add 10ms delay for stability
+    delay_ms(10);
     
     printf("JP1 UART initialized at %d baud\n", UART_BAUD_RATE);
     printf("UART_RX_BIT = 0x%08X, UART_TX_BIT = 0x%08X\n", UART_RX_BIT, UART_TX_BIT);
     printf("JP1 direction register value: 0x%08X\n", *(JP1_ptr + 1));
     printf("JP1 data register value: 0x%08X\n", *(JP1_ptr));
     printf("BIT_PERIOD = %d clock cycles\n", BIT_PERIOD);
+    
+    // Manual test of pin state at initialization
+    printf("RX pin initial state: %s\n", 
+           (*(JP1_ptr) & UART_RX_BIT) ? "HIGH" : "LOW");
 }
 
 // Delay loop for accurate bit timing
@@ -61,6 +68,12 @@ void bit_delay() {
 void half_bit_delay() {
     volatile int i;
     for (i = 0; i < BIT_PERIOD/2; i++);
+}
+
+// Simple delay in milliseconds
+void delay_ms(int ms) {
+    volatile int i;
+    for (i = 0; i < ms * (CLOCK_RATE / 10000); i++);
 }
 
 // Send a single byte over the software UART
@@ -192,16 +205,10 @@ int read_line(int timeout_ms) {
     return rx_buffer_pos;
 }
 
-// Simple delay in milliseconds
-void delay_ms(int ms) {
-    volatile int i;
-    for (i = 0; i < ms * (CLOCK_RATE / 10000); i++);
-}
-
 // Test TX pin by toggling it directly
 void test_tx_pin() {
     printf("\n===== TX PIN TOGGLE TEST =====\n");
-    printf("Toggling TX pin (JP1 D1) 10 times...\n");
+    printf("Toggling TX pin (JP1 D11) 10 times...\n");
     
     // Turn on LED 9 during test
     *LEDR_ptr |= 0x200;
@@ -238,7 +245,7 @@ void test_tx_pin() {
 // Test loopback by connecting TX to RX externally
 void test_loopback() {
     printf("\n===== LOOPBACK TEST =====\n");
-    printf("Connect DE1-SoC JP1 D1 (TX) to JP1 D0 (RX) physically\n");
+    printf("Connect DE1-SoC JP1 D11 (TX) to JP1 D10 (RX) physically\n");
     printf("Sending test characters and checking if they loop back...\n");
     
     // Turn on LED 8 during test
@@ -254,7 +261,7 @@ void test_loopback() {
         uart_tx_byte(test_chars[i]);
         
         // Try to receive it back with a timeout
-        int received = uart_rx_byte(100);  // 100ms timeout
+        int received = uart_rx_byte(200);  // 200ms timeout
         
         if (received == test_chars[i]) {
             printf("SUCCESS: Sent '%c', Received '%c'\n", test_chars[i], (char)received);
@@ -314,6 +321,105 @@ void test_bit_pattern() {
     printf("==========================\n\n");
 }
 
+// Direct pin-to-pin loopback test
+void test_direct_loopback() {
+    printf("\n===== DIRECT PIN LOOPBACK TEST =====\n");
+    printf("Testing direct connection between TX (0x%08X) and RX (0x%08X) pins\n", 
+           UART_TX_BIT, UART_RX_BIT);
+    
+    // Turn on LED 6 during test
+    *LEDR_ptr |= 0x40;
+    
+    // Get current pin state
+    int tx_data = *(JP1_ptr);
+    int initial_rx_state = (*(JP1_ptr) & UART_RX_BIT) ? 1 : 0;
+    
+    printf("Initial state: TX pin is %s, RX pin is %s\n",
+           (tx_data & UART_TX_BIT) ? "HIGH" : "LOW",
+           initial_rx_state ? "HIGH" : "LOW");
+    
+    // Test 1: Set TX high and check RX
+    tx_data |= UART_TX_BIT;
+    *(JP1_ptr) = tx_data;
+    delay_ms(50);  // Allow time for signal to propagate
+    
+    int rx_state_when_tx_high = (*(JP1_ptr) & UART_RX_BIT) ? 1 : 0;
+    printf("TX HIGH test: TX pin set HIGH, RX pin is %s\n", 
+           rx_state_when_tx_high ? "HIGH (following)" : "LOW (not following)");
+    
+    // Test 2: Set TX low and check RX
+    tx_data &= ~UART_TX_BIT;
+    *(JP1_ptr) = tx_data;
+    delay_ms(50);  // Allow time for signal to propagate
+    
+    int rx_state_when_tx_low = (*(JP1_ptr) & UART_RX_BIT) ? 1 : 0;
+    printf("TX LOW test: TX pin set LOW, RX pin is %s\n", 
+           rx_state_when_tx_low ? "HIGH (not following)" : "LOW (following)");
+    
+    // Test 3: Perform several fast toggles to check consistent behavior
+    printf("\nRapid toggle test (TX HIGH→LOW→HIGH, checking RX after each change):\n");
+    for (int i = 0; i < 5; i++) {
+        // Set TX HIGH
+        tx_data |= UART_TX_BIT;
+        *(JP1_ptr) = tx_data;
+        delay_ms(20);
+        rx_state_when_tx_high = (*(JP1_ptr) & UART_RX_BIT) ? 1 : 0;
+        printf("Toggle %d HIGH: RX is %s (JP1=0x%08X)\n", 
+               i+1, rx_state_when_tx_high ? "HIGH" : "LOW", *(JP1_ptr));
+        
+        // Set TX LOW
+        tx_data &= ~UART_TX_BIT;
+        *(JP1_ptr) = tx_data;
+        delay_ms(20);
+        rx_state_when_tx_low = (*(JP1_ptr) & UART_RX_BIT) ? 1 : 0;
+        printf("Toggle %d LOW: RX is %s (JP1=0x%08X)\n", 
+               i+1, rx_state_when_tx_low ? "HIGH" : "LOW", *(JP1_ptr));
+    }
+    
+    // Test 4: Check if reading/writing the I/O register affects behavior
+    printf("\nTesting input latching behavior:\n");
+    
+    // Set TX HIGH but read JP1 multiple times
+    tx_data |= UART_TX_BIT;
+    *(JP1_ptr) = tx_data;
+    
+    for (int i = 0; i < 3; i++) {
+        delay_ms(10);
+        printf("Read %d after TX HIGH: RX is %s (JP1=0x%08X)\n", 
+               i+1, (*(JP1_ptr) & UART_RX_BIT) ? "HIGH" : "LOW", *(JP1_ptr));
+    }
+    
+    // Set TX LOW but read JP1 multiple times
+    tx_data &= ~UART_TX_BIT;
+    *(JP1_ptr) = tx_data;
+    
+    for (int i = 0; i < 3; i++) {
+        delay_ms(10);
+        printf("Read %d after TX LOW: RX is %s (JP1=0x%08X)\n", 
+               i+1, (*(JP1_ptr) & UART_RX_BIT) ? "HIGH" : "LOW", *(JP1_ptr));
+    }
+    
+    // Result summary
+    printf("\nTest Summary:\n");
+    if (rx_state_when_tx_high && !rx_state_when_tx_low) {
+        printf("PASS: RX pin correctly follows TX pin (normal connection)\n");
+    } else if (!rx_state_when_tx_high && rx_state_when_tx_low) {
+        printf("PASS with INVERSION: RX pin follows TX pin with inversion\n");
+    } else {
+        printf("FAIL: RX pin does not reliably follow TX pin\n");
+        printf("Possible causes:\n");
+        printf("1. No physical connection between pins\n");
+        printf("2. Input buffer configuration issue\n");
+        printf("3. I/O standard mismatch\n");
+        printf("4. Electrical level incompatibility\n");
+    }
+    
+    // Turn off LED 6
+    *LEDR_ptr &= ~0x40;
+    
+    printf("====================================\n\n");
+}
+
 // Main function
 int main(void) {
     // Initialize pointers to I/O devices
@@ -342,7 +448,7 @@ int main(void) {
     printf("- KEY0: Send test message in current mode\n");
     printf("- KEY1: Run TX pin toggle test\n");
     printf("- KEY2: Run loopback test\n");
-    printf("- KEY3: Run bit pattern test\n");
+    printf("- KEY3: Run direct pin loopback test\n");
     printf("- Switch settings control test mode:\n");
     printf("  SW0=0: Normal mode (short messages)\n");
     printf("  SW0=1: Different test patterns\n");
@@ -350,9 +456,6 @@ int main(void) {
     
     // Initial LED state
     *LEDR_ptr = 0;
-    
-    // Run the TX pin test once at startup
-    test_tx_pin();
     
     // Main loop
     while (1) {
@@ -417,28 +520,10 @@ int main(void) {
             test_loopback();
         }
         
-        // KEY3: Run bit pattern test
+        // KEY3: Run direct pin loopback test
         if ((key_value & 0x8) && !(old_key_value & 0x8)) {
-            printf("\nKEY3 pressed - Running bit pattern test\n");
-            test_bit_pattern();
-        }
-        
-        // Send automatic message every 5 seconds
-        if (current_time - last_tx_time > 500000000) {  // 5 seconds with 100MHz clock
-            printf("\nAuto-sending test message\n");
-            
-            // Turn on LED 1
-            *LEDR_ptr |= 0x2;
-            
-            // Create and send test message
-            sprintf(tx_message, "AUTO%d\n", message_counter++);
-            uart_tx_string(tx_message);
-            
-            last_tx_time = current_time;
-            
-            // Turn off LED 1 after a delay
-            delay_ms(200);
-            *LEDR_ptr &= ~0x2;
+            printf("\nKEY3 pressed - Running direct pin loopback test\n");
+            test_direct_loopback();
         }
         
         // Check for received data with a short timeout
