@@ -100,6 +100,67 @@ void drive_pin_high(volatile int *ptr, int bit) {
     delay_ms(1);
 }
 
+
+// New simplified test with extra-wide bit timing
+void test_simplified_uart() {
+    printf("\n===== SIMPLIFIED UART TEST =====\n");
+    printf("Using manual bit-banging with extra-wide timing...\n");
+    
+    // Turn on LED 5 during test
+    *LEDR_ptr |= 0x20;
+    
+    // Define test message
+    char* test_message = "HELLO";
+    printf("Sending test message: \"%s\"\n", test_message);
+    
+    // Send each character with extremely wide timing
+    for (int c = 0; c < strlen(test_message); c++) {
+        char ch = test_message[c];
+        printf("\nSending character '%c' (0x%02X) with wide timing\n", ch, ch);
+        
+        // Ensure we start from a known HIGH state (idle)
+        drive_pin_high(JP1_ptr, UART_TX_BIT);
+        delay_ms(20);
+        
+        // Start bit (LOW) - extra long
+        printf("Start bit (LOW)\n");
+        drive_pin_low(JP1_ptr, UART_TX_BIT);
+        delay_ms(20);  // 20ms for start bit
+        
+        // Send 8 data bits (LSB first) with wide timing
+        for (int i = 0; i < 8; i++) {
+            if (ch & (1 << i)) {
+                drive_pin_high(JP1_ptr, UART_TX_BIT);
+                printf("Bit %d: HIGH\n", i);
+            } else {
+                drive_pin_low(JP1_ptr, UART_TX_BIT);
+                printf("Bit %d: LOW\n", i);
+            }
+            delay_ms(20);  // 20ms per bit
+        }
+        
+        // Stop bit (HIGH) - extra long
+        drive_pin_high(JP1_ptr, UART_TX_BIT);
+        printf("Stop bit (HIGH)\n");
+        delay_ms(40);  // 40ms for stop bit
+        
+        // Inter-character gap
+        delay_ms(100);
+    }
+    
+    // Final long idle state
+    drive_pin_high(JP1_ptr, UART_TX_BIT);
+    delay_ms(50);
+    
+    // Turn off LED 5
+    *LEDR_ptr &= ~0x20;
+    
+    printf("Simplified UART test complete\n");
+    printf("=============================\n\n");
+}
+
+
+
 // ===== STEP 3: Replace your uart_tx_byte function with this version =====
 void uart_tx_byte(unsigned char data) {
     int i;
