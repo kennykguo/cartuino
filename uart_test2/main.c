@@ -8,7 +8,7 @@
 // JP1 UART Configuration
 #define UART_RX_BIT 0x00000001  // Bit 0 for RX (D0)
 #define UART_TX_BIT 0x00000002  // Bit 1 for TX (D1)
-#define UART_BAUD_RATE 600     // Very slow baud rate for maximum reliability
+#define UART_BAUD_RATE 400980     // Very slow baud rate for maximum reliability
 #define CLOCK_RATE 100000000    // 100MHz DE1-SoC system clock
 #define BIT_PERIOD (CLOCK_RATE / UART_BAUD_RATE)
 
@@ -419,7 +419,7 @@ void test_bit_pattern() {
     }
     
     // Now send a simple ASCII pattern
-    uart_tx_string("UART-TEST");
+    uart_tx_string("F");
     
     // Turn off LED 7
     *LEDR_ptr &= ~0x80;
@@ -643,7 +643,8 @@ int main(void) {
                 // Create and send test message based on mode
                 if (current_test_mode == MODE_NORMAL) {
                     // In normal mode, send a short, simple message
-                    sprintf(tx_message, "TEST%d\n", message_counter++);
+                    // sprintf(tx_message, "TEST%d\n", message_counter++);
+                    sprintf(tx_message, "F");
                 } else {
                     // In alternate mode, send more distinctive patterns
                     sprintf(tx_message, "DE1_%c%c%c\n", 'A' + (message_counter % 26),
