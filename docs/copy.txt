@@ -1,3 +1,4 @@
+
 ===================================
 DE1-SoC UART Debug Test Started
 ===================================
@@ -73,6 +74,232 @@ Byte transmission complete
 Sending byte: 0x30 ('0')
 TX pin set LOW (start bit)
 TX bit 0: LOW
+TX bit 1: LOW
+TX bit 2: LOW
+TX bit 3: LOW
+TX bit 4: HIGH
+TX bit 5: HIGH
+TX bit 6: LOW
+TX bit 7: LOW
+TX pin set HIGH (stop bit)
+Byte transmission complete
+Sending byte: 0x0A ('?')
+TX pin set LOW (start bit)
+TX bit 0: LOW
+TX bit 1: HIGH
+TX bit 2: LOW
+TX bit 3: HIGH
+TX bit 4: LOW
+TX bit 5: LOW
+TX bit 6: LOW
+TX bit 7: LOW
+TX pin set HIGH (stop bit)
+Byte transmission complete
+String transmission complete
+
+KEY1 pressed - Running TX pin toggle test
+
+===== TX PIN TOGGLE TEST =====
+Toggling TX pin (JP1 D1) 10 times...
+TX pin set LOW, JP1 data reg: 0xFFFFFFED
+TX pin set HIGH, JP1 data reg: 0xFFFFFFEF
+TX pin set LOW, JP1 data reg: 0xFFFFFFED
+TX pin set HIGH, JP1 data reg: 0xFFFFFFEF
+TX pin set LOW, JP1 data reg: 0xFFFFFFED
+TX pin set HIGH, JP1 data reg: 0xFFFFFFEF
+TX pin set LOW, JP1 data reg: 0xFFFFFFED
+TX pin set HIGH, JP1 data reg: 0xFFFFFFEF
+TX pin set LOW, JP1 data reg: 0xFFFFFFED
+TX pin set HIGH, JP1 data reg: 0xFFFFFFEF
+TX pin set LOW, JP1 data reg: 0xFFFFFFED
+TX pin set HIGH, JP1 data reg: 0xFFFFFFEF
+TX pin set LOW, JP1 data reg: 0xFFFFFFED
+TX pin set HIGH, JP1 data reg: 0xFFFFFFEF
+TX pin set LOW, JP1 data reg: 0xFFFFFFED
+TX pin set HIGH, JP1 data reg: 0xFFFFFFEF
+TX pin set LOW, JP1 data reg: 0xFFFFFFED
+TX pin set HIGH, JP1 data reg: 0xFFFFFFEF
+TX pin set LOW, JP1 data reg: 0xFFFFFFED
+TX pin set HIGH, JP1 data reg: 0xFFFFFFEF
+TX pin toggle test complete
+===========================
+
+
+KEY2 pressed - Running loopback test
+
+===== LOOPBACK TEST =====
+Connect DE1-SoC JP1 D1 (TX) to JP1 D0 (RX) physically
+Sending test characters and checking if they loop back...
+Testing character 'A':
+Sending byte: 0x41 ('A')
+TX pin set LOW (start bit)
+TX bit 0: HIGH
+TX bit 1: LOW
+TX bit 2: LOW
+TX bit 3: LOW
+TX bit 4: LOW
+TX bit 5: LOW
+TX bit 6: HIGH
+TX bit 7: LOW
+TX pin set HIGH (stop bit)
+Byte transmission complete
+FAILED: Sent 'A', Received -1 (0xFFFFFFFF)
+Testing character 'B':
+Sending byte: 0x42 ('B')
+TX pin set LOW (start bit)
+TX bit 0: LOW
+TX bit 1: HIGH
+TX bit 2: LOW
+TX bit 3: LOW
+TX bit 4: LOW
+TX bit 5: LOW
+TX bit 6: HIGH
+TX bit 7: LOW
+TX pin set HIGH (stop bit)
+Byte transmission complete
+FAILED: Sent 'B', Received -1 (0xFFFFFFFF)
+Testing character 'C':
+Sending byte: 0x43 ('C')
+TX pin set LOW (start bit)
+TX bit 0: HIGH
+TX bit 1: HIGH
+TX bit 2: LOW
+TX bit 3: LOW
+TX bit 4: LOW
+TX bit 5: LOW
+TX bit 6: HIGH
+TX bit 7: LOW
+TX pin set HIGH (stop bit)
+Byte transmission complete
+FAILED: Sent 'C', Received -1 (0xFFFFFFFF)
+Testing character 'D':
+Sending byte: 0x44 ('D')
+TX pin set LOW (start bit)
+TX bit 0: LOW
+TX bit 1: LOW
+TX bit 2: HIGH
+TX bit 3: LOW
+TX bit 4: LOW
+TX bit 5: LOW
+TX bit 6: HIGH
+TX bit 7: LOW
+TX pin set HIGH (stop bit)
+Byte transmission complete
+FAILED: Sent 'D', Received -1 (0xFFFFFFFF)
+Testing character 'E':
+Sending byte: 0x45 ('E')
+TX pin set LOW (start bit)
+TX bit 0: HIGH
+TX bit 1: LOW
+TX bit 2: HIGH
+TX bit 3: LOW
+TX bit 4: LOW
+TX bit 5: LOW
+TX bit 6: HIGH
+TX bit 7: LOW
+TX pin set HIGH (stop bit)
+Byte transmission complete
+FAILED: Sent 'E', Received -1 (0xFFFFFFFF)
+Loopback test complete: 0/5 successful
+=========================
+
+
+KEY3 pressed - Running direct pin loopback test
+
+===== DIRECT PIN LOOPBACK TEST =====
+Testing direct connection between TX (0x00000002) and RX (0x00000001) pins
+Initial state: TX pin is HIGH, RX pin is HIGH
+TX HIGH test: TX pin set HIGH, RX pin is HIGH (following)
+TX LOW test: TX pin set LOW, RX pin is HIGH (not following)
+
+Rapid toggle test (TX HIGHΓåÆLOWΓåÆHIGH, checking RX after each change):
+Toggle 1 HIGH: RX is HIGH (JP1=0xFFFFFFEF)
+Toggle 1 LOW: RX is HIGH (JP1=0xFFFFFFED)
+Toggle 2 HIGH: RX is HIGH (JP1=0xFFFFFFEF)
+Toggle 2 LOW: RX is HIGH (JP1=0xFFFFFFED)
+Toggle 3 HIGH: RX is HIGH (JP1=0xFFFFFFEF)
+Toggle 3 LOW: RX is HIGH (JP1=0xFFFFFFED)
+Toggle 4 HIGH: RX is HIGH (JP1=0xFFFFFFEF)
+Toggle 4 LOW: RX is HIGH (JP1=0xFFFFFFED)
+Toggle 5 HIGH: RX is HIGH (JP1=0xFFFFFFEF)
+Toggle 5 LOW: RX is HIGH (JP1=0xFFFFFFED)
+
+Testing input latching behavior:
+Read 1 after TX HIGH: RX is HIGH (JP1=0xFFFFFFEF)
+Read 2 after TX HIGH: RX is HIGH (JP1=0xFFFFFFEF)
+Read 3 after TX HIGH: RX is HIGH (JP1=0xFFFFFFEF)
+Read 1 after TX LOW: RX is LOW (JP1=0xFFFFFFEC)
+Read 2 after TX LOW: RX is HIGH (JP1=0xFFFFFFED)
+Read 3 after TX LOW: RX is HIGH (JP1=0xFFFFFFED)
+
+Test Summary:
+FAIL: RX pin does not reliably follow TX pin
+Possible causes:
+1. No physical connection between pins
+2. Input buffer configuration issue
+3. I/O standard mismatch
+4. Electrical level incompatibility
+====================================
+
+Start bit detected
+False start bit detected
+Start bit detected
+False start bit detected
+
+KEY0 pressed - Sending test message
+Starting to send string: "TEST1
+"
+Sending byte: 0x54 ('T')
+TX pin set LOW (start bit)
+TX bit 0: LOW
+TX bit 1: LOW
+TX bit 2: HIGH
+TX bit 3: LOW
+TX bit 4: HIGH
+TX bit 5: LOW
+TX bit 6: HIGH
+TX bit 7: LOW
+TX pin set HIGH (stop bit)
+Byte transmission complete
+Sending byte: 0x45 ('E')
+TX pin set LOW (start bit)
+TX bit 0: HIGH
+TX bit 1: LOW
+TX bit 2: HIGH
+TX bit 3: LOW
+TX bit 4: LOW
+TX bit 5: LOW
+TX bit 6: HIGH
+TX bit 7: LOW
+TX pin set HIGH (stop bit)
+Byte transmission complete
+Sending byte: 0x53 ('S')
+TX pin set LOW (start bit)
+TX bit 0: HIGH
+TX bit 1: HIGH
+TX bit 2: LOW
+TX bit 3: LOW
+TX bit 4: HIGH
+TX bit 5: LOW
+TX bit 6: HIGH
+TX bit 7: LOW
+TX pin set HIGH (stop bit)
+Byte transmission complete
+Sending byte: 0x54 ('T')
+TX pin set LOW (start bit)
+TX bit 0: LOW
+TX bit 1: LOW
+TX bit 2: HIGH
+TX bit 3: LOW
+TX bit 4: HIGH
+TX bit 5: LOW
+TX bit 6: HIGH
+TX bit 7: LOW
+TX pin set HIGH (stop bit)
+Byte transmission complete
+Sending byte: 0x31 ('1')
+TX pin set LOW (start bit)
+TX bit 0: HIGH
 TX bit 1: LOW
 TX bit 2: LOW
 TX bit 3: LOW
