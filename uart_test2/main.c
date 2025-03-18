@@ -1,27 +1,14 @@
-// DE1-SoC UART Debug Script
-// Enhanced with additional testing options and improved timing
+// DE1-SoC UART Debug Script with Pulse Protocol Test
+// Enhanced for troubleshooting DE1-SoC to Arduino communication
 
 #include <stdio.h>
 #include <string.h>
 #include "address_map.h"
 
 // JP1 UART Configuration
-// Can switch between D10/D11 and D0/D1
-#define USE_D0_D1 1   // Set to 1 to use D0/D1 pins, 0 to use D10/D11
-
-#if USE_D0_D1
-    #define UART_RX_BIT 0x00000001  // Bit 0 for RX (D0)
-    #define UART_TX_BIT 0x00000002  // Bit 1 for TX (D1)
-    #define PIN_RX_NAME "D0"
-    #define PIN_TX_NAME "D1"
-#else
-    #define UART_RX_BIT 0x00000400  // Bit 10 for RX (D10)
-    #define UART_TX_BIT 0x00000800  // Bit 11 for TX (D11)
-    #define PIN_RX_NAME "D10"
-    #define PIN_TX_NAME "D11"
-#endif
-
-#define UART_BAUD_RATE 1200     // Reduced baud rate for more reliable communication
+#define UART_RX_BIT 0x00000001  // Bit 0 for RX (D0)
+#define UART_TX_BIT 0x00000002  // Bit 1 for TX (D1)
+#define UART_BAUD_RATE 1200     // Very slow baud rate for maximum reliability
 #define CLOCK_RATE 100000000    // 100MHz DE1-SoC system clock
 #define BIT_PERIOD (CLOCK_RATE / UART_BAUD_RATE)
 
@@ -79,8 +66,8 @@ void init_jp1_uart() {
     delay_ms(10);
     
     printf("JP1 UART initialized at %d baud\n", UART_BAUD_RATE);
-    printf("UART_RX_BIT = 0x%08X (%s), UART_TX_BIT = 0x%08X (%s)\n", 
-           UART_RX_BIT, PIN_RX_NAME, UART_TX_BIT, PIN_TX_NAME);
+    printf("UART_RX_BIT = 0x%08X (D0), UART_TX_BIT = 0x%08X (D1)\n", 
+           UART_RX_BIT, UART_TX_BIT);
     printf("JP1 direction register value: 0x%08X\n", *(JP1_ptr + 1));
     printf("JP1 data register value: 0x%08X\n", *(JP1_ptr));
     printf("BIT_PERIOD = %d clock cycles\n", BIT_PERIOD);
@@ -242,7 +229,7 @@ int read_line(int timeout_ms) {
 // Test TX pin by toggling it directly
 void test_tx_pin() {
     printf("\n===== TX PIN TOGGLE TEST =====\n");
-    printf("Toggling TX pin (JP1 %s) 10 times...\n", PIN_TX_NAME);
+    printf("Toggling TX pin (JP1 D1) 10 times...\n");
     
     // Turn on LED 9 during test
     *LEDR_ptr |= 0x200;
@@ -279,8 +266,7 @@ void test_tx_pin() {
 // Test loopback by connecting TX to RX externally
 void test_loopback() {
     printf("\n===== LOOPBACK TEST =====\n");
-    printf("Connect DE1-SoC JP1 %s (TX) to JP1 %s (RX) physically\n", 
-           PIN_TX_NAME, PIN_RX_NAME);
+    printf("Connect DE1-SoC JP1 D1 (TX) to JP1 D0 (RX) physically\n");
     printf("Sending test characters and checking if they loop back...\n");
     
     // Turn on LED 8 during test
@@ -356,162 +342,6 @@ void test_bit_pattern() {
     printf("==========================\n\n");
 }
 
-// New simplified test with extra-wide bit timing
-void test_simplified_uart() {
-    printf("\n===== SIMPLIFIED UART TEST =====\n");
-    printf("Using manual bit-banging with extra-wide timing...\n");
-    
-    // Turn on LED 5 during test
-    *LEDR_ptr |= 0x20;
-    
-    // Ensure TX is HIGH initially for idle
-    int tx_data = *(JP1_ptr);
-    tx_data |= UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    delay_ms(50);  // Long idle state
-    
-    printf("Sending 0x55 test pattern with extra-wide timing...\n");
-    
-    // Manual bit-banging with extra delays
-    // Start bit (LOW)
-    tx_data &= ~UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Start bit (LOW)\n");
-    delay_ms(10);  // Extra long start bit
-    
-    // Send 0x55 (01010101) with extra wide bits
-    // Bit 0 (LOW)
-    tx_data &= ~UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Bit 0: LOW\n");
-    delay_ms(10);
-    
-    // Bit 1 (HIGH)
-    tx_data |= UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Bit 1: HIGH\n");
-    delay_ms(10);
-    
-    // Bit 2 (LOW)
-    tx_data &= ~UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Bit 2: LOW\n");
-    delay_ms(10);
-    
-    // Bit 3 (HIGH)
-    tx_data |= UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Bit 3: HIGH\n");
-    delay_ms(10);
-    
-    // Bit 4 (LOW)
-    tx_data &= ~UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Bit 4: LOW\n");
-    delay_ms(10);
-    
-    // Bit 5 (HIGH)
-    tx_data |= UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Bit 5: HIGH\n");
-    delay_ms(10);
-    
-    // Bit 6 (LOW)
-    tx_data &= ~UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Bit 6: LOW\n");
-    delay_ms(10);
-    
-    // Bit 7 (HIGH)
-    tx_data |= UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Bit 7: HIGH\n");
-    delay_ms(10);
-
-    // Stop bit (HIGH) - extra long
-    tx_data |= UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Stop bit (HIGH)\n");
-    delay_ms(20);
-    
-    printf("Pattern transmission complete\n");
-    
-    // Now try sending 0xAA
-    printf("Sending 0xAA test pattern with extra-wide timing...\n");
-    
-    // Ensure TX is HIGH for idle state before next transmission
-    tx_data |= UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    delay_ms(50);  // Long idle state
-    
-    // Start bit (LOW)
-    tx_data &= ~UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Start bit (LOW)\n");
-    delay_ms(10);
-    
-    // Send 0xAA (10101010) with extra wide bits
-    // Bit 0 (HIGH)
-    tx_data |= UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Bit 0: HIGH\n");
-    delay_ms(10);
-    
-    // Bit 1 (LOW)
-    tx_data &= ~UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Bit 1: LOW\n");
-    delay_ms(10);
-    
-    // Bit 2 (HIGH)
-    tx_data |= UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Bit 2: HIGH\n");
-    delay_ms(10);
-    
-    // Bit 3 (LOW)
-    tx_data &= ~UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Bit 3: LOW\n");
-    delay_ms(10);
-    
-    // Bit 4 (HIGH)
-    tx_data |= UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Bit 4: HIGH\n");
-    delay_ms(10);
-    
-    // Bit 5 (LOW)
-    tx_data &= ~UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Bit 5: LOW\n");
-    delay_ms(10);
-    
-    // Bit 6 (HIGH)
-    tx_data |= UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Bit 6: HIGH\n");
-    delay_ms(10);
-    
-    // Bit 7 (LOW)
-    tx_data &= ~UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Bit 7: LOW\n");
-    delay_ms(10);
-
-    // Stop bit (HIGH) - extra long
-    tx_data |= UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    printf("Stop bit (HIGH)\n");
-    delay_ms(20);
-    
-    // Turn off LED 5
-    *LEDR_ptr &= ~0x20;
-    
-    printf("Simplified UART test complete\n");
-    printf("============================\n\n");
-}
-
 // Direct pin-to-pin loopback test
 void test_direct_loopback() {
     printf("\n===== DIRECT PIN LOOPBACK TEST =====\n");
@@ -567,29 +397,6 @@ void test_direct_loopback() {
                i+1, rx_state_when_tx_low ? "HIGH" : "LOW", *(JP1_ptr));
     }
     
-    // Test 4: Check if reading/writing the I/O register affects behavior
-    printf("\nTesting input latching behavior:\n");
-    
-    // Set TX HIGH but read JP1 multiple times
-    tx_data |= UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    
-    for (int i = 0; i < 3; i++) {
-        delay_ms(10);
-        printf("Read %d after TX HIGH: RX is %s (JP1=0x%08X)\n", 
-               i+1, (*(JP1_ptr) & UART_RX_BIT) ? "HIGH" : "LOW", *(JP1_ptr));
-    }
-    
-    // Set TX LOW but read JP1 multiple times
-    tx_data &= ~UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    
-    for (int i = 0; i < 3; i++) {
-        delay_ms(10);
-        printf("Read %d after TX LOW: RX is %s (JP1=0x%08X)\n", 
-               i+1, (*(JP1_ptr) & UART_RX_BIT) ? "HIGH" : "LOW", *(JP1_ptr));
-    }
-    
     // Result summary
     printf("\nTest Summary:\n");
     if (rx_state_when_tx_high && !rx_state_when_tx_low) {
@@ -611,6 +418,62 @@ void test_direct_loopback() {
     printf("====================================\n\n");
 }
 
+// NEW: Pulse protocol test to bypass UART protocol timing
+void pulse_protocol_test() {
+    printf("\n===== PULSE PROTOCOL TEST =====\n");
+    printf("Sending distinct pulse patterns to Arduino...\n");
+    
+    // Turn on LED 4 during test
+    *LEDR_ptr |= 0x10;
+    
+    int tx_data = *(JP1_ptr);
+    
+    // Ensure we start from a known HIGH state
+    tx_data |= UART_TX_BIT;
+    *(JP1_ptr) = tx_data;
+    printf("Setting initial HIGH state: JP1=0x%08X\n", *(JP1_ptr));
+    delay_ms(500);  // Long idle period
+    
+    // First pattern: 5 pulses with distinct timing
+    // 100ms LOW, 300ms HIGH repeated 5 times
+    printf("Pattern 1: 5 short-long pulses (100ms LOW, 300ms HIGH)\n");
+    for (int i = 0; i < 5; i++) {
+        // LOW pulse
+        tx_data &= ~UART_TX_BIT;
+        *(JP1_ptr) = tx_data;
+        printf("Pulse %d LOW: JP1=0x%08X\n", i+1, *(JP1_ptr));
+        delay_ms(100);  // 100ms LOW
+        
+        // HIGH pulse
+        tx_data |= UART_TX_BIT;
+        *(JP1_ptr) = tx_data;
+        printf("Pulse %d HIGH: JP1=0x%08X\n", i+1, *(JP1_ptr));
+        delay_ms(300);  // 300ms HIGH
+    }
+    
+    // Second pattern: long LOW, long HIGH
+    printf("Pattern 2: 1 second LOW, 1 second HIGH\n");
+    tx_data &= ~UART_TX_BIT;
+    *(JP1_ptr) = tx_data;
+    printf("Long LOW: JP1=0x%08X\n", *(JP1_ptr));
+    delay_ms(1000);  // 1 second LOW
+    
+    tx_data |= UART_TX_BIT;
+    *(JP1_ptr) = tx_data;
+    printf("Long HIGH: JP1=0x%08X\n", *(JP1_ptr));
+    delay_ms(1000);  // 1 second HIGH
+    
+    // Ensure we end with HIGH (idle) state
+    tx_data |= UART_TX_BIT;
+    *(JP1_ptr) = tx_data;
+    
+    // Turn off LED 4
+    *LEDR_ptr &= ~0x10;
+    
+    printf("Pulse protocol test complete\n");
+    printf("===========================\n\n");
+}
+
 // Main function
 int main(void) {
     // Initialize pointers to I/O devices
@@ -621,7 +484,7 @@ int main(void) {
     TIMER_ptr = (int *)TIMER_BASE;
     
     printf("\n\n===================================\n");
-    printf("DE1-SoC UART Debug Test Started\n");
+    printf("DE1-SoC UART and Pulse Test Started\n");
     printf("===================================\n");
     
     // Initialize JP1 for UART
@@ -641,6 +504,7 @@ int main(void) {
     printf("- KEY2: Run loopback test\n");
     printf("- KEY3: Run direct pin loopback test\n");
     printf("- SW0+KEY0: Run simplified UART test with wide timing\n");
+    printf("- SW1+KEY0: Run pulse protocol test (bypass UART)\n");
     printf("- Switch settings control test mode:\n");
     printf("  SW0=0: Normal mode (short messages)\n");
     printf("  SW0=1: Different test patterns\n");
@@ -672,9 +536,14 @@ int main(void) {
             old_sw_value = sw_value;
         }
         
-        // KEY0: Send test message or run simplified test if SW0 is on
+        // KEY0: Select function based on switches
         if ((key_value & 0x1) && !(old_key_value & 0x1)) {
-            if (sw_value & 0x1) {
+            if (sw_value & 0x2) {
+                // SW1 is on, run pulse protocol test
+                printf("\nKEY0 pressed with SW1 on - Running pulse protocol test\n");
+                pulse_protocol_test();
+            }
+            else if (sw_value & 0x1) {
                 // SW0 is on, run simplified UART test
                 printf("\nKEY0 pressed with SW0 on - Running simplified UART test\n");
                 test_simplified_uart();
