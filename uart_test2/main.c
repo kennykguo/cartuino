@@ -1,4 +1,4 @@
-// DE1-SoC UART Debug and Manchester Encoding Test Script
+// DE1-SoC UART Debug Script with Pulse Protocol Test
 // Enhanced for troubleshooting DE1-SoC to Arduino communication
 
 #include <stdio.h>
@@ -8,7 +8,7 @@
 // JP1 UART Configuration
 #define UART_RX_BIT 0x00000001  // Bit 0 for RX (D0)
 #define UART_TX_BIT 0x00000002  // Bit 1 for TX (D1)
-#define UART_BAUD_RATE 600      // Very slow baud rate for maximum reliability
+#define UART_BAUD_RATE 600     // Very slow baud rate for maximum reliability
 #define CLOCK_RATE 100000000    // 100MHz DE1-SoC system clock
 #define BIT_PERIOD (CLOCK_RATE / UART_BAUD_RATE)
 
@@ -54,28 +54,6 @@ void half_bit_delay() {
     for (i = 0; i < (BIT_PERIOD*6)/10; i++);
 }
 
-// More aggressive pin driving for LOW state
-void drive_pin_low(volatile int *ptr, int bit) {
-    int val = *ptr;
-    val &= ~bit;  // Clear bit
-    *ptr = val;
-    // Force multiple writes to ensure pin is driven properly
-    *ptr = val;
-    *ptr = val;
-    delay_ms(2);  // Longer hold time for LOW state
-}
-
-// More aggressive pin driving for HIGH state
-void drive_pin_high(volatile int *ptr, int bit) {
-    int val = *ptr;
-    val |= bit;  // Set bit
-    *ptr = val;
-    // Force multiple writes to ensure pin is driven properly
-    *ptr = val;
-    *ptr = val;
-    delay_ms(1);
-}
-
 // Initialize the JP1 port for UART communication
 void init_jp1_uart() {
     // Set direction for RX as input, TX as output
@@ -99,7 +77,89 @@ void init_jp1_uart() {
            (*(JP1_ptr) & UART_RX_BIT) ? "HIGH" : "LOW");
 }
 
-// Send a single byte over the software UART
+
+// More aggressive pin driving for LOW state
+void drive_pin_low(volatile int *ptr, int bit) {
+    int val = *ptr;
+    val &= ~bit;  // Clear bit
+    *ptr = val;
+    // Force multiple writes to ensure pin is driven properly
+    *ptr = val;
+    *ptr = val;
+    delay_ms(2);  // Longer hold time for LOW state
+}
+
+// More aggressive pin driving for HIGH state
+void drive_pin_high(volatile int *ptr, int bit) {
+    int val = *ptr;
+    val |= bit;  // Set bit
+    *ptr = val;
+    // Force multiple writes to ensure pin is driven properly
+    *ptr = val;
+    *ptr = val;
+    delay_ms(1);
+}
+
+
+// New simplified test with extra-wide bit timing
+void test_simplified_uart() {
+    printf("\n===== SIMPLIFIED UART TEST =====\n");
+    printf("Using manual bit-banging with extra-wide timing...\n");
+    
+    // Turn on LED 5 during test
+    *LEDR_ptr |= 0x20;
+    
+    // Define test message
+    char* test_message = "HELLO";
+    printf("Sending test message: \"%s\"\n", test_message);
+    
+    // Send each character with extremely wide timing
+    for (int c = 0; c < strlen(test_message); c++) {
+        char ch = test_message[c];
+        printf("\nSending character '%c' (0x%02X) with wide timing\n", ch, ch);
+        
+        // Ensure we start from a known HIGH state (idle)
+        drive_pin_high(JP1_ptr, UART_TX_BIT);
+        delay_ms(20);
+        
+        // Start bit (LOW) - extra long
+        printf("Start bit (LOW)\n");
+        drive_pin_low(JP1_ptr, UART_TX_BIT);
+        delay_ms(20);  // 20ms for start bit
+        
+        // Send 8 data bits (LSB first) with wide timing
+        for (int i = 0; i < 8; i++) {
+            if (ch & (1 << i)) {
+                drive_pin_high(JP1_ptr, UART_TX_BIT);
+                printf("Bit %d: HIGH\n", i);
+            } else {
+                drive_pin_low(JP1_ptr, UART_TX_BIT);
+                printf("Bit %d: LOW\n", i);
+            }
+            delay_ms(20);  // 20ms per bit
+        }
+        
+        // Stop bit (HIGH) - extra long
+        drive_pin_high(JP1_ptr, UART_TX_BIT);
+        printf("Stop bit (HIGH)\n");
+        delay_ms(40);  // 40ms for stop bit
+        
+        // Inter-character gap
+        delay_ms(100);
+    }
+    
+    // Final long idle state
+    drive_pin_high(JP1_ptr, UART_TX_BIT);
+    delay_ms(50);
+    
+    // Turn off LED 5
+    *LEDR_ptr &= ~0x20;
+    
+    printf("Simplified UART test complete\n");
+    printf("=============================\n\n");
+}
+
+// ===== STEP 3: Replace your uart_tx_byte function with this version =====
 void uart_tx_byte(unsigned char data) {
     int i;
     
@@ -144,6 +204,8 @@ void uart_tx_byte(unsigned char data) {
     delay_ms(5);
 }
 
+
+
 // Send a string over the software UART
 void uart_tx_string(char *str) {
     char *p = str;
@@ -155,7 +217,7 @@ void uart_tx_string(char *str) {
     printf("String transmission complete\n");
 }
 
-// Wait for and receive one byte over the software UART
+// Wait for and receive one byte over the software UART - improved for better tolerance
 int uart_rx_byte(int timeout_ms) {
     int i;
     unsigned char rx_data = 0;
@@ -220,6 +282,7 @@ int uart_rx_byte(int timeout_ms) {
 }
 
 // Read a complete line (up to newline or buffer full)
+// Returns number of bytes read, or -1 on error
 int read_line(int timeout_ms) {
     int c;
     rx_buffer_pos = 0;
@@ -247,64 +310,6 @@ int read_line(int timeout_ms) {
     rx_buffer[rx_buffer_pos] = '\0';
     
     return rx_buffer_pos;
-}
-
-// New simplified test with extra-wide bit timing
-void test_simplified_uart() {
-    printf("\n===== SIMPLIFIED UART TEST =====\n");
-    printf("Using manual bit-banging with extra-wide timing...\n");
-    
-    // Turn on LED 5 during test
-    *LEDR_ptr |= 0x20;
-    
-    // Define test message
-    char* test_message = "HELLO";
-    printf("Sending test message: \"%s\"\n", test_message);
-    
-    // Send each character with extremely wide timing
-    for (int c = 0; c < strlen(test_message); c++) {
-        char ch = test_message[c];
-        printf("\nSending character '%c' (0x%02X) with wide timing\n", ch, ch);
-        
-        // Ensure we start from a known HIGH state (idle)
-        drive_pin_high(JP1_ptr, UART_TX_BIT);
-        delay_ms(20);
-        
-        // Start bit (LOW) - extra long
-        printf("Start bit (LOW)\n");
-        drive_pin_low(JP1_ptr, UART_TX_BIT);
-        delay_ms(20);  // 20ms for start bit
-        
-        // Send 8 data bits (LSB first) with wide timing
-        for (int i = 0; i < 8; i++) {
-            if (ch & (1 << i)) {
-                drive_pin_high(JP1_ptr, UART_TX_BIT);
-                printf("Bit %d: HIGH\n", i);
-            } else {
-                drive_pin_low(JP1_ptr, UART_TX_BIT);
-                printf("Bit %d: LOW\n", i);
-            }
-            delay_ms(20);  // 20ms per bit
-        }
-        
-        // Stop bit (HIGH) - extra long
-        drive_pin_high(JP1_ptr, UART_TX_BIT);
-        printf("Stop bit (HIGH)\n");
-        delay_ms(40);  // 40ms for stop bit
-        
-        // Inter-character gap
-        delay_ms(100);
-    }
-    
-    // Final long idle state
-    drive_pin_high(JP1_ptr, UART_TX_BIT);
-    delay_ms(50);
-    
-    // Turn off LED 5
-    *LEDR_ptr &= ~0x20;
-    
-    printf("Simplified UART test complete\n");
-    printf("=============================\n\n");
 }
 
 // Test TX pin by toggling it directly
@@ -499,77 +504,7 @@ void test_direct_loopback() {
     printf("====================================\n\n");
 }
 
-// Manchester Encoding transmission
-void send_manchester_byte(unsigned char data) {
-    printf("\n===== MANCHESTER ENCODED BYTE =====\n");
-    printf("Sending byte 0x%02X ('%c') with Manchester encoding\n", 
-           data, (data >= 32 && data <= 126) ? data : '?');
-    
-    // Turn on LED 3 during test
-    *LEDR_ptr |= 0x8;
-    
-    // Signal start
-    drive_pin_high(JP1_ptr, UART_TX_BIT);
-    delay_ms(100);
-    
-    // Start sequence - 3 long pulses
-    for (int i = 0; i < 3; i++) {
-        drive_pin_low(JP1_ptr, UART_TX_BIT);
-        delay_ms(100);
-        drive_pin_high(JP1_ptr, UART_TX_BIT);
-        delay_ms(100);
-    }
-    
-    // Send each bit using Manchester encoding
-    // (HIGH-to-LOW = 1, LOW-to-HIGH = 0)
-    for (int i = 7; i >= 0; i--) {  // MSB first for easier visual debugging
-        if (data & (1 << i)) {
-            // Send '1': HIGH then LOW
-            drive_pin_high(JP1_ptr, UART_TX_BIT);
-            delay_ms(50);
-            drive_pin_low(JP1_ptr, UART_TX_BIT);
-            delay_ms(50);
-            printf("Bit %d (1): HIGH->LOW\n", i);
-        } else {
-            // Send '0': LOW then HIGH
-            drive_pin_low(JP1_ptr, UART_TX_BIT);
-            delay_ms(50);
-            drive_pin_high(JP1_ptr, UART_TX_BIT);
-            delay_ms(50);
-            printf("Bit %d (0): LOW->HIGH\n", i);
-        }
-    }
-    
-    // End sequence - one long pulse
-    drive_pin_low(JP1_ptr, UART_TX_BIT);
-    delay_ms(150);
-    drive_pin_high(JP1_ptr, UART_TX_BIT);
-    delay_ms(150);
-    
-    // Turn off LED 3
-    *LEDR_ptr &= ~0x8;
-    
-    printf("Manchester encoded byte complete\n");
-}
-
-// Send multiple characters using Manchester encoding
-void send_manchester_string(char *str) {
-    printf("\n===== MANCHESTER ENCODED STRING =====\n");
-    printf("Sending string \"%s\" with Manchester encoding\n", str);
-    
-    // Send each character
-    char *p = str;
-    while (*p) {
-        send_manchester_byte(*p);
-        p++;
-        delay_ms(200);  // Gap between characters
-    }
-    
-    printf("Manchester encoded string complete\n");
-    printf("==================================\n\n");
-}
-
-// Pulse protocol test to bypass UART protocol timing
+// NEW: Pulse protocol test to bypass UART protocol timing
 void pulse_protocol_test() {
     printf("\n===== PULSE PROTOCOL TEST =====\n");
     printf("Sending distinct pulse patterns to Arduino...\n");
@@ -635,7 +570,7 @@ int main(void) {
     TIMER_ptr = (int *)TIMER_BASE;
     
     printf("\n\n===================================\n");
-    printf("DE1-SoC UART and Manchester Test\n");
+    printf("DE1-SoC UART and Pulse Test Started\n");
     printf("===================================\n");
     
     // Initialize JP1 for UART
@@ -654,9 +589,8 @@ int main(void) {
     printf("- KEY1: Run TX pin toggle test\n");
     printf("- KEY2: Run loopback test\n");
     printf("- KEY3: Run direct pin loopback test\n");
-    printf("- SW0+KEY0: Run simplified UART test\n");
-    printf("- SW1+KEY0: Run pulse protocol test\n");
-    printf("- SW2+KEY0: Run Manchester encoding test\n");
+    printf("- SW0+KEY0: Run simplified UART test with wide timing\n");
+    printf("- SW1+KEY0: Run pulse protocol test (bypass UART)\n");
     printf("- Switch settings control test mode:\n");
     printf("  SW0=0: Normal mode (short messages)\n");
     printf("  SW0=1: Different test patterns\n");
@@ -690,12 +624,7 @@ int main(void) {
         
         // KEY0: Select function based on switches
         if ((key_value & 0x1) && !(old_key_value & 0x1)) {
-            if (sw_value & 0x4) {
-                // SW2 is on, run Manchester encoding test
-                printf("\nKEY0 pressed with SW2 on - Running Manchester encoding test\n");
-                send_manchester_string("HELLO");
-            }
-            else if (sw_value & 0x2) {
+            if (sw_value & 0x2) {
                 // SW1 is on, run pulse protocol test
                 printf("\nKEY0 pressed with SW1 on - Running pulse protocol test\n");
                 pulse_protocol_test();
