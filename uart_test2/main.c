@@ -8,7 +8,7 @@
 // JP1 UART Configuration
 #define UART_RX_BIT 0x00000001  // Bit 0 for RX (D0)
 #define UART_TX_BIT 0x00000002  // Bit 1 for TX (D1)
-#define UART_BAUD_RATE 1200     // Very slow baud rate for maximum reliability
+#define UART_BAUD_RATE 600     // Very slow baud rate for maximum reliability
 #define CLOCK_RATE 100000000    // 100MHz DE1-SoC system clock
 #define BIT_PERIOD (CLOCK_RATE / UART_BAUD_RATE)
 
@@ -77,48 +77,75 @@ void init_jp1_uart() {
            (*(JP1_ptr) & UART_RX_BIT) ? "HIGH" : "LOW");
 }
 
-// Send a single byte over the software UART - improved with stabilization delays
+
+// More aggressive pin driving for LOW state
+void drive_pin_low(volatile int *ptr, int bit) {
+    int val = *ptr;
+    val &= ~bit;  // Clear bit
+    *ptr = val;
+    // Force multiple writes to ensure pin is driven properly
+    *ptr = val;
+    *ptr = val;
+    delay_ms(2);  // Longer hold time for LOW state
+}
+
+// More aggressive pin driving for HIGH state
+void drive_pin_high(volatile int *ptr, int bit) {
+    int val = *ptr;
+    val |= bit;  // Set bit
+    *ptr = val;
+    // Force multiple writes to ensure pin is driven properly
+    *ptr = val;
+    *ptr = val;
+    delay_ms(1);
+}
+
+// ===== STEP 3: Replace your uart_tx_byte function with this version =====
 void uart_tx_byte(unsigned char data) {
     int i;
-    int tx_data = *(JP1_ptr);
     
     // Print debug info
     printf("Sending byte: 0x%02X ('%c')\n", data, (data >= 32 && data <= 126) ? data : '?');
     
-    // Start bit (LOW)
-    tx_data &= ~UART_TX_BIT;  // Clear TX bit
-    *(JP1_ptr) = tx_data;
-    delay_ms(1);  // Short stabilization delay after bit transition
+    // Idle state guarantee
+    drive_pin_high(JP1_ptr, UART_TX_BIT);
+    delay_ms(5);  // Extended idle time
+    
+    // Start bit (LOW) - aggressive driving
     printf("TX pin set LOW (start bit)\n");
+    drive_pin_low(JP1_ptr, UART_TX_BIT);
     bit_delay();
+    delay_ms(1);  // Extra delay
     
     // Data bits (LSB first)
     for (i = 0; i < 8; i++) {
         if (data & (1 << i)) {
-            // Data bit is 1
-            tx_data |= UART_TX_BIT;
+            // Data bit is 1 (HIGH)
+            drive_pin_high(JP1_ptr, UART_TX_BIT);
             printf("TX bit %d: HIGH\n", i);
         } else {
-            // Data bit is 0
-            tx_data &= ~UART_TX_BIT;
+            // Data bit is 0 (LOW)
+            drive_pin_low(JP1_ptr, UART_TX_BIT);
             printf("TX bit %d: LOW\n", i);
         }
-        *(JP1_ptr) = tx_data;
-        delay_ms(1);  // Short stabilization delay after bit transition
         bit_delay();
+        delay_ms(1);  // Extra delay between bits
     }
     
-    // Stop bit (HIGH)
-    tx_data |= UART_TX_BIT;
-    *(JP1_ptr) = tx_data;
-    delay_ms(1);  // Short stabilization delay after bit transition
+    // Stop bit (HIGH) - extra long
+    drive_pin_high(JP1_ptr, UART_TX_BIT);
     printf("TX pin set HIGH (stop bit)\n");
     bit_delay();
+    bit_delay();  // Double stop bit duration
+    delay_ms(3);  // Extra delay after stop bit
     
-    // Extra delay for better framing - double the stop bit time
-    bit_delay();
     printf("Byte transmission complete\n");
+    
+    // Guarantee minimum inter-byte delay
+    delay_ms(5);
 }
+
+
 
 // Send a string over the software UART
 void uart_tx_string(char *str) {

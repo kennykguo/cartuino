@@ -25,7 +25,7 @@ void setup() {
   Serial.begin(9600);
   
   // Setup hardware UART for DE1-SoC communication
-  Serial1.begin(1200);  // Very slow baud rate for reliability
+  Serial1.begin(600);  // Very slow baud rate for reliability
   
   // Configure direct pin monitoring in addition to Serial1
   pinMode(RX_PIN, INPUT);
@@ -36,6 +36,8 @@ void setup() {
   delay(100);
   digitalWrite(LED_BUILTIN, LOW);
   
+  Serial1.setTimeout(100);  // 100ms timeout for UART operations
+
   Serial.println("\n\n");
   Serial.println("==============================================");
   Serial.println("Arduino DE1-SoC UART and Pulse Detection Ready");
