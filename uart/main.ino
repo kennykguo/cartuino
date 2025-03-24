@@ -11,7 +11,7 @@
 #define CLOCK_PIN 1 // D1 for clock line
 
 // Communication parameters
-#define BIT_PERIOD_MS 2    // 2ms per bit - 10x faster
+#define BIT_PERIOD_MS 20   // 20ms per bit
 #define MSG_BUFFER_SIZE 64 // Buffer size for messages
 char tx_buffer[MSG_BUFFER_SIZE];
 char rx_buffer[MSG_BUFFER_SIZE];
@@ -37,7 +37,7 @@ unsigned long debounceDelay = 50;
 
 void setup() {
   // Setup USB serial for debugging output
-  Serial.begin(115200); // Higher baud rate for faster debugging
+  Serial.begin(9600);
   
   // Configure DATA and CLOCK pins
   pinMode(DATA_PIN, INPUT); // Default to input mode
@@ -46,6 +46,9 @@ void setup() {
   // Configure built-in LED
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
+  
+  // Configure button with pull-up resistor
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
   
   // Initial LED flash to show we're ready
   digitalWrite(LED_BUILTIN, HIGH);
@@ -56,21 +59,14 @@ void setup() {
   delay(100);
   digitalWrite(LED_BUILTIN, LOW);
   
-  delay(1000); // Give time for Serial Monitor to connect
-  
   Serial.println("\n\n");
   Serial.println("==============================================");
   Serial.println("Arduino Reliable Communication Protocol Ready");
   Serial.println("==============================================");
-  Serial.println("Auto-sending messages every 5 seconds");
-  Serial.println("Will also receive messages from DE1-SoC");
+  Serial.println("Controls:");
+  Serial.println("- Button on pin 2: Send test message to DE1-SoC");
+  Serial.println("- Will automatically receive messages from DE1-SoC");
   Serial.println("==============================================");
-  
-  // Check initial pin states
-  Serial.print("Initial DATA pin state: ");
-  Serial.println(digitalRead(DATA_PIN) ? "HIGH" : "LOW");
-  Serial.print("Initial CLOCK pin state: ");
-  Serial.println(digitalRead(CLOCK_PIN) ? "HIGH" : "LOW");
 }
 
 // Set the DATA pin direction
@@ -93,45 +89,19 @@ int readClockPin() {
   return digitalRead(CLOCK_PIN);
 }
 
-// Send a single bit with clock monitoring and timeout
+// Send a single bit with clock monitoring
 void sendBit(int bit) {
-  unsigned long startTime = millis();
-  boolean timedOut = false;
-  
   // Set the data value
   setDataPin(bit);
-  Serial.print("Setting data pin to ");
-  Serial.println(bit ? "HIGH" : "LOW");
   
   // Wait for clock to go LOW (DE1-SoC signals ready to read)
-  Serial.println("Waiting for clock LOW...");
-  while(readClockPin() == HIGH && !timedOut) {
-    if (millis() - startTime > 500) { // 500ms timeout
-      timedOut = true;
-      Serial.println("TIMEOUT waiting for clock LOW!");
-    }
+  while(readClockPin() == HIGH) {
+    // Add timeout check if needed
   }
   
-  if (!timedOut) {
-    Serial.println("Clock went LOW");
-    
-    // Wait for clock to go HIGH again (bit transmission complete)
-    startTime = millis();
-    Serial.println("Waiting for clock HIGH...");
-    while(readClockPin() == LOW && !timedOut) {
-      if (millis() - startTime > 500) { // 500ms timeout
-        timedOut = true;
-        Serial.println("TIMEOUT waiting for clock HIGH!");
-      }
-    }
-    
-    if (!timedOut) {
-      Serial.println("Clock went HIGH");
-    }
-  }
-  
-  if (timedOut) {
-    Serial.println("Communication error - clock signal timeout");
+  // Wait for clock to go HIGH again (bit transmission complete)
+  while(readClockPin() == LOW) {
+    // Add timeout check if needed
   }
 }
 
@@ -232,8 +202,18 @@ void sendMessage(char *message) {
   // 5. Send end sequence
   sendByte(END_SEQUENCE);
   
-  // Skip waiting for ACK to avoid blocking
-  Serial.println("Message sent - continuing without waiting for ACK");
+  // 6. Wait for ACK from receiver
+  setDataPinMode(INPUT);
+  unsigned char response = receiveByte();
+  
+  if (response == ACK_BYTE) {
+    Serial.println("Received ACK - message successfully delivered");
+  } else {
+    Serial.print("Did not receive ACK - got 0x");
+    if (response < 16) Serial.print("0");
+    Serial.print(response, HEX);
+    Serial.println(" instead");
+  }
   
   // Turn off LED
   digitalWrite(LED_BUILTIN, LOW);
@@ -321,9 +301,13 @@ int receiveMessage() {
     success = 1;
   }
   
-  // Skip sending ACK/NACK to avoid potential issues
-  Serial.print("Message processing complete with status: ");
-  Serial.println(success ? "SUCCESS" : "FAILED");
+  // 6. Send ACK or NACK based on success
+  setDataPinMode(OUTPUT);
+  if (success) {
+    sendByte(ACK_BYTE);
+  } else {
+    sendByte(NACK_BYTE);
+  }
   
   // Turn off LED
   digitalWrite(LED_BUILTIN, LOW);
@@ -346,53 +330,42 @@ bool clockPulseDetected() {
 }
 
 void loop() {
-  static unsigned long lastPinCheckTime = 0;
-  
-  // Check for incoming message from DE1-SoC
-  int clockState = readClockPin();
-  if (clockState == LOW) {
-    Serial.println("CLOCK pulse detected - attempting to receive message");
+  // Check for incoming message from DE1-SoC (edge detection on CLOCK)
+  if (clockPulseDetected()) {
     receiveMessage();
     lastActivityTime = millis();
   }
   
-  // Print pin states every second for debugging
-  if (millis() - lastPinCheckTime > 1000) {
-    Serial.print("DATA pin: ");
-    Serial.print(digitalRead(DATA_PIN) ? "HIGH" : "LOW");
-    Serial.print(", CLOCK pin: ");
-    Serial.println(digitalRead(CLOCK_PIN) ? "HIGH" : "LOW");
-    lastPinCheckTime = millis();
+  // Check if button is pressed to send test message
+  int reading = digitalRead(BUTTON_PIN);
+  
+  // Debounce button
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();
   }
   
-  // Auto-send a simple test message every 5 seconds
-  if (millis() - lastActivityTime > 5000) {
-    Serial.println("\n--- Auto-sending test message ---");
-    
-    // Try a different approach - use manual bit-banging instead of protocol
-    Serial.println("Sending manual pulse pattern instead of protocol message");
-    
-    // Ensure DATA pin is output
-    pinMode(DATA_PIN, OUTPUT);
-    
-    // Send 10 pulses with 50ms timing (visible timing)
-    for (int i = 0; i < 10; i++) {
-      digitalWrite(DATA_PIN, HIGH);
-      Serial.println("DATA: HIGH");
-      delay(50);
-      digitalWrite(DATA_PIN, LOW);
-      Serial.println("DATA: LOW");
-      delay(50);
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    // If button state has changed and it's pressed (LOW due to pull-up)
+    if (reading == LOW && lastButtonState == HIGH) {
+      Serial.println("\nButton pressed - Sending test message");
+      
+      // Create test message
+      sprintf(tx_buffer, "ARD_MSG_%d", message_counter++);
+      
+      // Send it
+      sendMessage(tx_buffer);
+      lastActivityTime = millis();
     }
-    
-    // Return to normal state
-    digitalWrite(DATA_PIN, LOW);
-    pinMode(DATA_PIN, INPUT);
-    
-    Serial.println("Pulse pattern sent");
+  }
+  
+  lastButtonState = reading;
+  
+  // If it's been 5 seconds since last activity, print a heartbeat message
+  if (millis() - lastActivityTime > 5000) {
+    Serial.println("Waiting for activity...");
     lastActivityTime = millis();
   }
   
   // Small delay
-  delay(5);
+  delay(10);
 }
