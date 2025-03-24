@@ -94,15 +94,22 @@ int read_data_pin() {
 void send_bit(int bit) {
     // First, set the data value
     set_data_pin(bit);
-    delay_ms(1);  // Small setup delay
+    printf("Setting data pin to %s\n", bit ? "HIGH" : "LOW");
+    delay_ms(2);  // Increased setup delay
     
     // Then toggle clock from HIGH to LOW to signal data is ready
     set_clock_pin(0);
-    delay_ms(BIT_PERIOD_MS / 2);
+    printf("CLOCK pin set LOW\n");
+    delay_ms(BIT_PERIOD_MS);  // Full bit period at LOW
     
     // Back to HIGH to complete the bit transmission
     set_clock_pin(1);
-    delay_ms(BIT_PERIOD_MS / 2);
+    printf("CLOCK pin set HIGH\n");
+    delay_ms(BIT_PERIOD_MS);  // Full bit period at HIGH
+    
+    // Additional verification step - read back DATA pin
+    int readback = read_data_pin();
+    printf("DATA pin readback: %s\n", readback ? "HIGH" : "LOW");
 }
 
 // Send a byte (8 bits) MSB first
@@ -356,14 +363,32 @@ int main(void) {
         // Update old key value for edge detection
         old_key_value = key_value;
         
-        // Check if Arduino is sending a message (monitor for start sequence)
+        // Check if Arduino is sending data (poll for changes)
+        static int last_data_value = -1;
+        static unsigned long last_report_time = 0;
         int data_value = read_data_pin();
-        if (data_value == 0) {
-            // Possible start of transmission, try to receive message
-            delay_ms(1);
-            if (read_data_pin() == 0) {
-                receive_message();
-            }
+        unsigned long current_time = *(TIMER_ptr);
+        
+        // If data pin changes state, log it
+        if (data_value != last_data_value) {
+            printf("DATA pin change detected: %s -> %s\n", 
+                   last_data_value ? "HIGH" : "LOW", 
+                   data_value ? "HIGH" : "LOW");
+            last_data_value = data_value;
+            
+            // Flash LED 1 to show data detection
+            *LEDR_ptr ^= 0x2;
+            
+            // Record the time for pulse width measurement
+            last_report_time = current_time;
+        }
+        
+        // Report pin states periodically for debugging
+        if (current_time - last_report_time > CLOCK_RATE) {
+            printf("DATA pin: %s, CLOCK pin: %s\n",
+                   read_data_pin() ? "HIGH" : "LOW",
+                   (*(JP1_ptr) & CLOCK_PIN_BIT) ? "HIGH" : "LOW");
+            last_report_time = current_time;
         }
         
         // Small delay to prevent CPU hogging
