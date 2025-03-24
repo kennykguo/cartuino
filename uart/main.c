@@ -1,399 +1,225 @@
-// DE1-SoC Reliable Communication Protocol
-// Uses synchronous communication with Manchester-inspired encoding
+/*
+ * IMPROVED BIT-BANG UART PROTOCOL
+ * 
+ * This implementation uses more generous timing and simpler approach.
+ */
 
-#include <stdio.h>
-#include <string.h>
-#include "address_map.h"
+/************** ARDUINO CODE **************/
 
-// JP1 Pin definitions
-#define DATA_PIN_BIT 0x00000001  // Bit 0 (D0) for data line
-#define CLOCK_PIN_BIT 0x00000002 // Bit 1 (D1) for clock line
+// Arduino version - copy to a new sketch
+#define RX_PIN 0 // D0 for receiving from DE1-SoC
+#define TX_PIN 1 // D1 for transmitting to DE1-SoC
 
-// Global variables
-volatile int *JP1_ptr;      // Pointer to JP1 expansion port
-volatile int *KEY_ptr;      // Pointer to pushbutton KEYs
-volatile int *SW_ptr;       // Pointer to slider switches
-volatile int *LEDR_ptr;     // Pointer to red LEDs
-volatile int *TIMER_ptr;    // Pointer to interval timer
+// Matching the DE1-SoC's 600 baud rate
+#define BAUD_RATE 600
+#define BIT_DELAY (1000000 / BAUD_RATE)
 
-// Communication parameters
-#define BIT_PERIOD_MS 2     // 2ms per bit - 10x faster than before
-#define MSG_BUFFER_SIZE 64  // Buffer size for messages
-char tx_buffer[MSG_BUFFER_SIZE];
-char rx_buffer[MSG_BUFFER_SIZE];
+void setup() {
+  Serial.begin(115200);
+  pinMode(RX_PIN, INPUT);
+  pinMode(TX_PIN, OUTPUT);
+  digitalWrite(TX_PIN, HIGH); // Idle state for UART
+  
+  delay(1000);
+  Serial.println("Improved UART Protocol Ready");
+  Serial.println("Using bit-bang UART at 600 baud");
+}
+
+void loop() {
+  static unsigned long lastSendTime = 0;
+  
+  // Check for incoming data on RX pin
+  if (digitalRead(RX_PIN) == LOW) {
+    // Start bit detected, wait a bit to center in the bit
+    delayMicroseconds(BIT_DELAY / 2);
+    
+    // Read the byte
+    byte receivedByte = receiveChar();
+    
+    // Print the received byte
+    Serial.print("Received: 0x");
+    if (receivedByte < 16) Serial.print("0");
+    Serial.print(receivedByte, HEX);
+    Serial.print(" '");
+    if (receivedByte >= 32 && receivedByte <= 126) {
+      Serial.print((char)receivedByte);
+    } else {
+      Serial.print(".");
+    }
+    Serial.println("'");
+    
+    // Echo it back
+    delay(10); // Small delay before responding
+    sendChar(receivedByte);
+  }
+  
+  // Every 5 seconds, send a test message
+  if (millis() - lastSendTime > 5000) {
+    Serial.println("Sending test message...");
+    sendString("ARDUINO_TEST");
+    lastSendTime = millis();
+  }
+}
+
+// Send a single character using software UART
+void sendChar(byte c) {
+  // Start bit (LOW)
+  digitalWrite(TX_PIN, LOW);
+  delayMicroseconds(BIT_DELAY);
+  
+  // Send 8 data bits (LSB first)
+  for (int i = 0; i < 8; i++) {
+    digitalWrite(TX_PIN, (c & (1 << i)) ? HIGH : LOW);
+    delayMicroseconds(BIT_DELAY);
+  }
+  
+  // Stop bit (HIGH) - extra long for reliability
+  digitalWrite(TX_PIN, HIGH);
+  delayMicroseconds(BIT_DELAY * 2);
+}
+
+// Send a string one character at a time
+void sendString(const char* str) {
+  while (*str) {
+    sendChar(*str++);
+    delay(5); // Small inter-character delay
+  }
+}
+
+// Receive a single character using software UART
+byte receiveChar() {
+  byte val = 0;
+  
+  // Start bit already detected before calling this function
+  
+  // Read 8 data bits (LSB first)
+  for (int i = 0; i < 8; i++) {
+    delayMicroseconds(BIT_DELAY);
+    if (digitalRead(RX_PIN)) {
+      val |= (1 << i);
+    }
+  }
+  
+  // Wait for stop bit
+  delayMicroseconds(BIT_DELAY);
+  
+  // Add extra delay to ensure we're clear of the stop bit
+  delayMicroseconds(BIT_DELAY);
+  
+  return val;
+}
+
+/************** DE1-SoC CODE **************/
+
+/*
+// DE1-SoC version - integrate into your program
+
+// UART settings
+#define UART_RX_BIT 0x00000001  // D0 for receiving from Arduino
+#define UART_TX_BIT 0x00000002  // D1 for transmitting to Arduino
+#define UART_BAUD_RATE 600      // Very slow baud for reliability
+
+// Calculate bit delay using system clock
+#define BIT_DELAY (CLOCK_RATE / UART_BAUD_RATE)
+
+// Buffer for received data
+char rx_buffer[64];
 int rx_buffer_pos = 0;
 
-// Message counter
-int message_counter = 0;
+// Initialize UART
+void init_uart() {
+    // Set TX as output, RX as input
+    *(JP1_ptr + 1) = UART_TX_BIT;  // Direction register
+    
+    // Set TX HIGH (idle state)
+    *(JP1_ptr) |= UART_TX_BIT;
+    
+    printf("UART initialized at %d baud\n", UART_BAUD_RATE);
+    printf("TX (D1): %s, RX (D0): %s\n",
+           (*(JP1_ptr) & UART_TX_BIT) ? "HIGH" : "LOW",
+           (*(JP1_ptr) & UART_RX_BIT) ? "HIGH" : "LOW");
+}
 
-// Protocol constants
-#define START_SEQUENCE 0xAA // 10101010 pattern for synchronization
-#define END_SEQUENCE 0x55   // 01010101 pattern for end of message
-#define ACK_BYTE 0xCC       // 11001100 pattern for acknowledgment
-#define NACK_BYTE 0x33      // 00110011 pattern for negative acknowledgment
+// Send a character
+void uart_tx_char(char c) {
+    printf("Sending char: '%c' (0x%02X)\n", (c >= 32 && c <= 126) ? c : '.', c & 0xFF);
+    
+    // Start bit (LOW)
+    *(JP1_ptr) &= ~UART_TX_BIT;
+    bit_delay();
+    
+    // 8 data bits (LSB first)
+    for (int i = 0; i < 8; i++) {
+        if (c & (1 << i)) {
+            *(JP1_ptr) |= UART_TX_BIT;   // HIGH
+        } else {
+            *(JP1_ptr) &= ~UART_TX_BIT;  // LOW
+        }
+        bit_delay();
+    }
+    
+    // Stop bit (HIGH) - extra long for reliability
+    *(JP1_ptr) |= UART_TX_BIT;
+    bit_delay();
+    bit_delay();  // Double stop bit
+}
 
-// Simple delay in milliseconds
-void delay_ms(int ms) {
+// Send a string
+void uart_tx_string(const char* str) {
+    printf("Sending string: \"%s\"\n", str);
+    
+    while (*str) {
+        uart_tx_char(*str++);
+        delay_ms(5);  // Small delay between chars
+    }
+    
+    printf("String transmission complete\n");
+}
+
+// Read a character with timeout
+int uart_rx_char(int timeout_ms) {
+    int i, rx_data = 0;
+    unsigned long start_time = *(TIMER_ptr);
+    
+    // Wait for start bit (RX going LOW)
+    while ((*(JP1_ptr) & UART_RX_BIT)) {
+        if (timeout_ms > 0 && 
+            (*(TIMER_ptr) - start_time) > (timeout_ms * (CLOCK_RATE / 1000))) {
+            return -1;  // Timeout
+        }
+    }
+    
+    printf("Start bit detected\n");
+    
+    // Wait half a bit time to sample in the middle of the bit
+    delay_us(BIT_DELAY / 2);
+    
+    // Read 8 data bits (LSB first)
+    for (i = 0; i < 8; i++) {
+        delay_us(BIT_DELAY);
+        if (*(JP1_ptr) & UART_RX_BIT) {
+            rx_data |= (1 << i);
+        }
+    }
+    
+    // Wait for stop bit
+    delay_us(BIT_DELAY);
+    
+    printf("Received char: '%c' (0x%02X)\n", 
+          (rx_data >= 32 && rx_data <= 126) ? (char)rx_data : '.', rx_data);
+    
+    return rx_data;
+}
+
+// Helper for bit timing
+void bit_delay() {
     volatile int i;
-    for (i = 0; i < ms * (CLOCK_RATE / 10000); i++);
+    for (i = 0; i < BIT_DELAY; i++);
 }
 
-// Initialize the JP1 port for communication
-void init_jp1_communication() {
-    // Set DATA pin as input by default, CLOCK pin as output
-    *(JP1_ptr + 1) = CLOCK_PIN_BIT;  // Direction register
-    
-    // Set CLOCK pin high (idle state)
-    *(JP1_ptr) |= CLOCK_PIN_BIT;
-    
-    // Add delay for stability
-    delay_ms(10);
-    
-    printf("JP1 communication initialized\n");
-    printf("DATA_PIN_BIT = 0x%08X (D0), CLOCK_PIN_BIT = 0x%08X (D1)\n", 
-           DATA_PIN_BIT, CLOCK_PIN_BIT);
-    printf("JP1 direction register value: 0x%08X\n", *(JP1_ptr + 1));
-    printf("JP1 data register value: 0x%08X\n", *(JP1_ptr));
+// Helper for microsecond delay
+void delay_us(int us) {
+    volatile int i;
+    for (i = 0; i < us * (CLOCK_RATE / 1000000); i++);
 }
-
-// Set the direction of the DATA pin (input or output)
-void set_data_pin_direction(int is_output) {
-    if (is_output) {
-        // Set DATA pin as output
-        *(JP1_ptr + 1) |= DATA_PIN_BIT;
-    } else {
-        // Set DATA pin as input
-        *(JP1_ptr + 1) &= ~DATA_PIN_BIT;
-    }
-}
-
-// Set the DATA pin value (when configured as output)
-void set_data_pin(int high) {
-    if (high) {
-        *(JP1_ptr) |= DATA_PIN_BIT;
-    } else {
-        *(JP1_ptr) &= ~DATA_PIN_BIT;
-    }
-}
-
-// Set the CLOCK pin value
-void set_clock_pin(int high) {
-    if (high) {
-        *(JP1_ptr) |= CLOCK_PIN_BIT;
-    } else {
-        *(JP1_ptr) &= ~CLOCK_PIN_BIT;
-    }
-}
-
-// Read the DATA pin value
-int read_data_pin() {
-    return (*(JP1_ptr) & DATA_PIN_BIT) ? 1 : 0;
-}
-
-// Send a single bit with explicit clock
-void send_bit(int bit) {
-    // First, set the data value
-    set_data_pin(bit);
-    printf("Setting data pin to %s\n", bit ? "HIGH" : "LOW");
-    delay_ms(2);  // Increased setup delay
-    
-    // Then toggle clock from HIGH to LOW to signal data is ready
-    set_clock_pin(0);
-    printf("CLOCK pin set LOW\n");
-    delay_ms(BIT_PERIOD_MS);  // Full bit period at LOW
-    
-    // Back to HIGH to complete the bit transmission
-    set_clock_pin(1);
-    printf("CLOCK pin set HIGH\n");
-    delay_ms(BIT_PERIOD_MS);  // Full bit period at HIGH
-    
-    // Additional verification step - read back DATA pin
-    int readback = read_data_pin();
-    printf("DATA pin readback: %s\n", readback ? "HIGH" : "LOW");
-}
-
-// Send a byte (8 bits) MSB first
-void send_byte(unsigned char byte) {
-    // Set DATA pin as output
-    set_data_pin_direction(1);
-    
-    printf("Sending byte: 0x%02X\n", byte);
-    
-    // Send each bit, MSB first for more reliable transmission
-    for (int i = 7; i >= 0; i--) {
-        int bit = (byte >> i) & 0x01;
-        send_bit(bit);
-        printf("Sent bit %d: %d\n", i, bit);
-    }
-}
-
-// Receive a single bit by waiting for clock transition
-int receive_bit() {
-    int bit;
-    
-    // Wait for clock to go LOW (indicates data is ready)
-    while ((*(JP1_ptr) & CLOCK_PIN_BIT) != 0);
-    
-    // Read data bit
-    bit = read_data_pin();
-    
-    // Wait for clock to go HIGH again (end of bit)
-    while ((*(JP1_ptr) & CLOCK_PIN_BIT) == 0);
-    
-    return bit;
-}
-
-// Receive a byte (8 bits) MSB first
-unsigned char receive_byte() {
-    unsigned char byte = 0;
-    
-    // Set DATA pin as input
-    set_data_pin_direction(0);
-    
-    // Receive 8 bits, MSB first
-    for (int i = 7; i >= 0; i--) {
-        int bit = receive_bit();
-        byte |= (bit << i);
-        printf("Received bit %d: %d\n", i, bit);
-    }
-    
-    printf("Received byte: 0x%02X\n", byte);
-    return byte;
-}
-
-// Send a message with protocol framing
-void send_message(char *message) {
-    int len = strlen(message);
-    unsigned char checksum = 0;
-    
-    // Turn on LED 0 during transmission
-    *LEDR_ptr |= 0x1;
-    
-    printf("Sending message: \"%s\" (%d bytes)\n", message, len);
-    
-    // Set DATA pin as output
-    set_data_pin_direction(1);
-    
-    // 1. Send start sequence for synchronization
-    send_byte(START_SEQUENCE);
-    
-    // 2. Send length byte
-    send_byte((unsigned char)len);
-    checksum ^= len; // XOR for simple checksum
-    
-    // 3. Send each byte of the message
-    for (int i = 0; i < len; i++) {
-        send_byte((unsigned char)message[i]);
-        checksum ^= message[i]; // Update checksum
-    }
-    
-    // 4. Send checksum
-    send_byte(checksum);
-    
-    // 5. Send end sequence
-    send_byte(END_SEQUENCE);
-    
-    // Skip waiting for ACK to avoid blocking
-    printf("Message sent - continuing without waiting for ACK\n");
-    
-    // Turn off LED 0
-    *LEDR_ptr &= ~0x1;
-}
-
-// Receive a message with protocol framing
-int receive_message() {
-    unsigned char byte, length, checksum = 0, calculated_checksum = 0;
-    int i, success = 0;
-    
-    // Turn on LED 2 during reception
-    *LEDR_ptr |= 0x4;
-    
-    printf("Waiting for message...\n");
-    
-    // Set DATA pin as input
-    set_data_pin_direction(0);
-    
-    // 1. Wait for and verify start sequence
-    byte = receive_byte();
-    if (byte != START_SEQUENCE) {
-        printf("Invalid start sequence: 0x%02X, expected 0x%02X\n", byte, START_SEQUENCE);
-        *LEDR_ptr &= ~0x4; // Turn off LED 2
-        return 0;
-    }
-    
-    // 2. Receive length byte
-    length = receive_byte();
-    calculated_checksum ^= length;
-    
-    printf("Expecting message of %d bytes\n", length);
-    
-    // Ensure length is reasonable
-    if (length >= MSG_BUFFER_SIZE) {
-        printf("Message too long: %d bytes\n", length);
-        *LEDR_ptr &= ~0x4; // Turn off LED 2
-        return 0;
-    }
-    
-    // 3. Receive each byte of the message
-    rx_buffer_pos = 0;
-    for (i = 0; i < length; i++) {
-        byte = receive_byte();
-        rx_buffer[rx_buffer_pos++] = byte;
-        calculated_checksum ^= byte;
-    }
-    
-    // Null-terminate the string
-    rx_buffer[rx_buffer_pos] = '\0';
-    
-    // 4. Receive checksum
-    checksum = receive_byte();
-    
-    // 5. Receive end sequence
-    byte = receive_byte();
-    if (byte != END_SEQUENCE) {
-        printf("Invalid end sequence: 0x%02X, expected 0x%02X\n", byte, END_SEQUENCE);
-        success = 0;
-    } else if (checksum != calculated_checksum) {
-        printf("Checksum error: received 0x%02X, calculated 0x%02X\n", checksum, calculated_checksum);
-        success = 0;
-    } else {
-        printf("Message received successfully: \"%s\"\n", rx_buffer);
-        success = 1;
-    }
-    
-    // Skip sending ACK/NACK to avoid potential issues
-    printf("Message processing complete with status: %s\n", success ? "SUCCESS" : "FAILED");
-    
-    // Turn off LED 2
-    *LEDR_ptr &= ~0x4;
-    
-    return success;
-}
-
-// Main function
-int main(void) {
-    // Initialize pointers to I/O devices
-    JP1_ptr = (int *)JP1_BASE;
-    KEY_ptr = (int *)KEY_BASE;
-    SW_ptr = (int *)SW_BASE;
-    LEDR_ptr = (int *)LEDR_BASE;
-    TIMER_ptr = (int *)TIMER_BASE;
-    
-    printf("\n\n===================================\n");
-    printf("DE1-SoC Reliable Communication Started\n");
-    printf("===================================\n");
-    
-    // Initialize JP1 for communication
-    init_jp1_communication();
-    
-    // Main loop variables
-    int key_value, old_key_value = 0;
-    int sw_value;
-    unsigned long last_send_time = 0;
-    unsigned long current_time;
-    int auto_send_enabled = 1; // Enable automatic sending
-    
-    printf("Test Controls:\n");
-    printf("- KEY0: Send test message to Arduino\n");
-    printf("- KEY1: Wait to receive message from Arduino\n");
-    printf("- KEY2: Toggle automatic sending (every 3 seconds)\n");
-    printf("- SW0: Toggle between different test messages\n");
-    printf("===================================\n\n");
-    
-    // Initial LED state
-    *LEDR_ptr = 0;
-    
-    // Main loop
-    while (1) {
-        // Read key value for edge detection
-        key_value = *KEY_ptr;
-        
-        // Read switch value
-        sw_value = *SW_ptr;
-        
-        // Get current time (approximation)
-        current_time = *(TIMER_ptr);
-        
-        // KEY0: Send message to Arduino
-        if ((key_value & 0x1) && !(old_key_value & 0x1)) {
-            printf("\nKEY0 pressed - Sending test message\n");
-            
-            // Create test message based on switch setting
-            if (sw_value & 0x1) {
-                sprintf(tx_buffer, "DE1_MSG_%d_EXTENDED", message_counter++);
-            } else {
-                sprintf(tx_buffer, "DE1_MSG_%d", message_counter++);
-            }
-            
-            send_message(tx_buffer);
-            last_send_time = current_time;
-        }
-        
-        // KEY1: Receive message from Arduino
-        if ((key_value & 0x2) && !(old_key_value & 0x2)) {
-            printf("\nKEY1 pressed - Waiting for message from Arduino\n");
-            receive_message();
-        }
-        
-        // KEY2: Toggle auto-send mode
-        if ((key_value & 0x4) && !(old_key_value & 0x4)) {
-            auto_send_enabled = !auto_send_enabled;
-            printf("\nKEY2 pressed - Auto-send mode is now %s\n", 
-                   auto_send_enabled ? "ENABLED" : "DISABLED");
-            
-            // Update LED to show auto-send status
-            if (auto_send_enabled) {
-                *LEDR_ptr |= 0x8;   // Set LED 3
-            } else {
-                *LEDR_ptr &= ~0x8;  // Clear LED 3
-            }
-        }
-        
-        // Auto-send test message if enabled (every 3 seconds)
-        if (auto_send_enabled && (current_time - last_send_time > CLOCK_RATE * 3)) {
-            printf("\nAuto-sending simple test message\n");
-            
-            // Simple test message - a fixed string that doesn't depend on counters
-            strcpy(tx_buffer, "Hello Arduino");
-            
-            send_message(tx_buffer);
-            last_send_time = current_time;
-        }
-        
-        // Update old key value for edge detection
-        old_key_value = key_value;
-        
-        // Check if Arduino is sending data (poll for changes)
-        static int last_data_value = -1;
-        static unsigned long last_report_time = 0;
-        int data_value = read_data_pin();
-        unsigned long current_time = *(TIMER_ptr);
-        
-        // If data pin changes state, log it
-        if (data_value != last_data_value) {
-            printf("DATA pin change detected: %s -> %s\n", 
-                   last_data_value ? "HIGH" : "LOW", 
-                   data_value ? "HIGH" : "LOW");
-            last_data_value = data_value;
-            
-            // Flash LED 1 to show data detection
-            *LEDR_ptr ^= 0x2;
-            
-            // Record the time for pulse width measurement
-            last_report_time = current_time;
-        }
-        
-        // Report pin states periodically for debugging
-        if (current_time - last_report_time > CLOCK_RATE) {
-            printf("DATA pin: %s, CLOCK pin: %s\n",
-                   read_data_pin() ? "HIGH" : "LOW",
-                   (*(JP1_ptr) & CLOCK_PIN_BIT) ? "HIGH" : "LOW");
-            last_report_time = current_time;
-        }
-        
-        // Small delay to prevent CPU hogging
-        delay_ms(5);
-    }
-    
-    return 0;
-}
+*/
