@@ -870,6 +870,7 @@ void draw_start_screen() {
 }
 
 // draw character
+// draw character - expanded character set
 void draw_char(int x, int y, char c, short int color) {
     // Define font data for digits 0-9
     const unsigned char font_0[5] = {0x3E, 0x51, 0x49, 0x45, 0x3E}; // 0
@@ -883,25 +884,43 @@ void draw_char(int x, int y, char c, short int color) {
     const unsigned char font_8[5] = {0x36, 0x49, 0x49, 0x49, 0x36}; // 8
     const unsigned char font_9[5] = {0x06, 0x49, 0x49, 0x29, 0x1E}; // 9
 
-    // Letters and special characters
+    // Complete alphabet - all letters
     const unsigned char font_A[5] = {0x7E, 0x11, 0x11, 0x11, 0x7E}; // A
     const unsigned char font_B[5] = {0x7F, 0x49, 0x49, 0x49, 0x36}; // B
     const unsigned char font_C[5] = {0x3E, 0x41, 0x41, 0x41, 0x22}; // C
     const unsigned char font_D[5] = {0x7F, 0x41, 0x41, 0x22, 0x1C}; // D
     const unsigned char font_E[5] = {0x7F, 0x49, 0x49, 0x49, 0x41}; // E
+    const unsigned char font_F[5] = {0x7F, 0x09, 0x09, 0x09, 0x01}; // F
     const unsigned char font_G[5] = {0x3E, 0x41, 0x49, 0x49, 0x7A}; // G
     const unsigned char font_H[5] = {0x7F, 0x08, 0x08, 0x08, 0x7F}; // H
+    const unsigned char font_I[5] = {0x00, 0x41, 0x7F, 0x41, 0x00}; // I
+    const unsigned char font_J[5] = {0x20, 0x40, 0x41, 0x3F, 0x01}; // J
     const unsigned char font_K[5] = {0x7F, 0x08, 0x14, 0x22, 0x41}; // K
+    const unsigned char font_L[5] = {0x7F, 0x40, 0x40, 0x40, 0x40}; // L
+    const unsigned char font_M[5] = {0x7F, 0x02, 0x0C, 0x02, 0x7F}; // M
     const unsigned char font_N[5] = {0x7F, 0x04, 0x08, 0x10, 0x7F}; // N
     const unsigned char font_O[5] = {0x3E, 0x41, 0x41, 0x41, 0x3E}; // O
     const unsigned char font_P[5] = {0x7F, 0x09, 0x09, 0x09, 0x06}; // P
+    const unsigned char font_Q[5] = {0x3E, 0x41, 0x51, 0x21, 0x5E}; // Q
     const unsigned char font_R[5] = {0x7F, 0x09, 0x19, 0x29, 0x46}; // R
     const unsigned char font_S[5] = {0x46, 0x49, 0x49, 0x49, 0x31}; // S
     const unsigned char font_T[5] = {0x01, 0x01, 0x7F, 0x01, 0x01}; // T
+    const unsigned char font_U[5] = {0x3F, 0x40, 0x40, 0x40, 0x3F}; // U
+    const unsigned char font_V[5] = {0x1F, 0x20, 0x40, 0x20, 0x1F}; // V
     const unsigned char font_W[5] = {0x3F, 0x40, 0x38, 0x40, 0x3F}; // W
+    const unsigned char font_X[5] = {0x63, 0x14, 0x08, 0x14, 0x63}; // X
     const unsigned char font_Y[5] = {0x07, 0x08, 0x70, 0x08, 0x07}; // Y
+    const unsigned char font_Z[5] = {0x61, 0x51, 0x49, 0x45, 0x43}; // Z
+
+    // Special characters
+    const unsigned char font_space[5] = {0x00, 0x00, 0x00, 0x00, 0x00}; // Space
     const unsigned char font_colon[5] = {0x00, 0x36, 0x36, 0x00, 0x00}; // :
     const unsigned char font_dash[5] = {0x08, 0x08, 0x08, 0x08, 0x08}; // -
+    const unsigned char font_period[5] = {0x00, 0x60, 0x60, 0x00, 0x00}; // .
+    const unsigned char font_slash[5] = {0x20, 0x10, 0x08, 0x04, 0x02}; // /
+    const unsigned char font_percent[5] = {0x26, 0x16, 0x08, 0x34, 0x32}; // %
+    const unsigned char font_plus[5] = {0x08, 0x08, 0x3E, 0x08, 0x08}; // +
+    const unsigned char font_equal[5] = {0x14, 0x14, 0x14, 0x14, 0x14}; // =
 
     const unsigned char* font_ptr = NULL;
 
@@ -921,19 +940,35 @@ void draw_char(int x, int y, char c, short int color) {
     else if (c == 'C' || c == 'c') font_ptr = font_C;
     else if (c == 'D' || c == 'd') font_ptr = font_D;
     else if (c == 'E' || c == 'e') font_ptr = font_E;
+    else if (c == 'F' || c == 'f') font_ptr = font_F;
     else if (c == 'G' || c == 'g') font_ptr = font_G;
     else if (c == 'H' || c == 'h') font_ptr = font_H;
+    else if (c == 'I' || c == 'i') font_ptr = font_I;
+    else if (c == 'J' || c == 'j') font_ptr = font_J;
     else if (c == 'K' || c == 'k') font_ptr = font_K;
+    else if (c == 'L' || c == 'l') font_ptr = font_L;
+    else if (c == 'M' || c == 'm') font_ptr = font_M;
     else if (c == 'N' || c == 'n') font_ptr = font_N;
     else if (c == 'O' || c == 'o') font_ptr = font_O;
     else if (c == 'P' || c == 'p') font_ptr = font_P;
+    else if (c == 'Q' || c == 'q') font_ptr = font_Q;
     else if (c == 'R' || c == 'r') font_ptr = font_R;
     else if (c == 'S' || c == 's') font_ptr = font_S;
     else if (c == 'T' || c == 't') font_ptr = font_T;
+    else if (c == 'U' || c == 'u') font_ptr = font_U;
+    else if (c == 'V' || c == 'v') font_ptr = font_V;
     else if (c == 'W' || c == 'w') font_ptr = font_W;
+    else if (c == 'X' || c == 'x') font_ptr = font_X;
     else if (c == 'Y' || c == 'y') font_ptr = font_Y;
+    else if (c == 'Z' || c == 'z') font_ptr = font_Z;
+    else if (c == ' ') font_ptr = font_space;
     else if (c == ':') font_ptr = font_colon;
     else if (c == '-') font_ptr = font_dash;
+    else if (c == '.') font_ptr = font_period;
+    else if (c == '/') font_ptr = font_slash;
+    else if (c == '%') font_ptr = font_percent;
+    else if (c == '+') font_ptr = font_plus;
+    else if (c == '=') font_ptr = font_equal;
 
     // draw char
     if (font_ptr != NULL) {
