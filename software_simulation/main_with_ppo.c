@@ -39,18 +39,34 @@
 #define CYAN 0x07FF
 #define MAGENTA 0xF81F
 
-// PP0 ALGO PARAMETERS
-#define STATE_DIM 4
-#define ACTION_DIM 2
+// PP0 ALGO PARAMETERS - - - - - - - - - - - - - - - - - - - - - - - -
+// https://en.wikipedia.org/wiki/Asynchronous_serial_communication
+// https://en.wikipedia.org/wiki/Asynchronous_communication
+#define STATE_DIM 4 // NEVER CHANGE
+#define ACTION_DIM 2 // NEVER CHANGE
 #define HIDDEN_DIM 64
-#define BATCH_SIZE 128
-#define GAMMA 0.99f
+
+// #define BATCH_SIZE 128 // Used for policy_forward
+// Before was 16
+#define PPO_EPOCHS 8
+
+
+// Previous was 0.99
+#define GAMMA 0.98f
 #define LAMBDA 0.95f
-#define CLIP_EPSILON 0.2f
-#define LEARNING_RATE 0.005f
+
+
+// Previous was 0.2f
+#define CLIP_EPSILON 0.1f
+// Previous was 0.005f. 0.0075
+#define LEARNING_RATE 0.006f   
 #define MAX_EPISODES 1000
 #define MAX_STEPS_PER_EPOCH 300  // longer episodes -> allow more learning
-#define PPO_EPOCHS 16
+// Before was 0.3f, 0.2
+#define EXPLORE_RATE 0.25f
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// Mess around with the LR + other parameters
+// Think about implementing weight decay
 
 // TRAINING/INFERENCES MODES
 #define MODE_TRAIN 0
@@ -70,7 +86,7 @@ typedef struct {
     int best_reward;
 } PerformanceStats;
 
-// nn-struct using arrays only
+// NN-struct using arrays only
 typedef struct {
     // Policy network
     float weights1[STATE_DIM][HIDDEN_DIM];        // Input layer to first hidden
@@ -103,10 +119,10 @@ typedef struct {
     int size;
 } Memory;
 
-// GLOBAL VAR.
+// GLOBAL VAR
 volatile int pixel_buffer_start;
 short int Buffer1[240][512];
-short int Buffer2[240][512]; // back buffer
+short int Buffer2[240][512]; // Back buffer
 volatile int *KEY_ptr;
 volatile int *LEDR_ptr;
 volatile unsigned int *HEX3_HEX0_ptr;
@@ -119,6 +135,8 @@ NeuralNetwork nn;
 Memory memory;
 int simulation_running = 0;
 int current_mode = MODE_TRAIN;
+
+// Need to have greater range of randomness
 unsigned int random_seed;
 int best_steps = 0;
 
@@ -152,6 +170,8 @@ void init_network();
 void normalize_state(float normalized_state[STATE_DIM], CartPoleState *cart_state);
 float my_clamp(float value, float min, float max);
 int sample_action(float probs[ACTION_DIM]);
+
+
 
 int main(void) {
     volatile int * pixel_ctrl_ptr = (int *)PIXEL_BUF_CTRL_BASE;
@@ -262,7 +282,7 @@ int main(void) {
             int action;
             if (current_mode == MODE_TRAIN) {
                 // Sample action for training with more exploration
-                float explore_rate = my_max(0.1f, 0.5f * (1.0f - (float)stats.epoch / 100.0f)); // Gradually reduce exploration
+                float explore_rate = my_max(EXPLORE_RATE, 0.5f * (1.0f - (float)stats.epoch / 100.0f)); // Gradually reduce exploration
                 if ((float)xorshift32() / 4294967295.0f < explore_rate) {
                     // Take random action with probability explore_rate
                     action = xorshift32() % ACTION_DIM;
@@ -335,12 +355,15 @@ int main(void) {
                 // Update best reward
                 if (stats.total_reward > stats.best_reward) {
                     stats.best_reward = stats.total_reward;
+                    print_training_stats();  // Print stats when new best reward is achieved
+                    printf("NEW BEST REWARD ACHIEVED!\n");
                 }
 
                 if (current_mode == MODE_TRAIN) {
                     // Ensure the network gets updated
                     compute_advantages();
                     update_network();
+                    print_training_stats();
 
                     // Debug visualization - show training progress on LEDs
                     *LEDR_ptr = 0x155;  // Pattern to indicate network update
@@ -369,6 +392,7 @@ int main(void) {
 
                 // Turn on LED0 to indicate new epoch
                 *LEDR_ptr = 0x1;
+
             } else {
                 // Update LEDs to show step count (binary)
                 *LEDR_ptr = (stats.step & 0x3FF);  // Lower 10 bits
@@ -869,7 +893,6 @@ void draw_start_screen() {
     draw_text(VGA_WIDTH / 2 - 120, instr_y, "3. WATCH THE RL AGENT IMPROVE OVER TIME", WHITE);
 }
 
-// draw character
 // draw character - expanded character set
 void draw_char(int x, int y, char c, short int color) {
     // Define font data for digits 0-9
@@ -1240,7 +1263,6 @@ void policy_forward(float state[STATE_DIM], float probs[ACTION_DIM]) {
     probs[1] /= sum_exp;
 }
 
-// Neural Network forward pass for value function
 // Neural Network forward pass for value function - with two hidden layers
 float value_forward(float state[STATE_DIM]) {
     float hidden1[HIDDEN_DIM];
@@ -1645,6 +1667,98 @@ float my_clamp(float value, float min, float max) {
     return value < min ? min : (value > max ? max : value);
 }
 
+// Function to print training statistics
+void print_training_stats() {
+    char buffer[30];
+    
+    // Print a header for clarity
+    printf("\n===== CARTRL TRAINING STATISTICS =====\n");
+    
+    // Print basic episode stats
+    printf("Episode: %d\n", stats.epoch);
+    printf("Current Step: %d\n", stats.step);
+    printf("Current Reward: %d\n", stats.total_reward);
+    printf("Best Reward: %d\n", stats.best_reward);
+    
+    // Print memory buffer usage
+    printf("Memory Buffer: %d/%d steps\n", memory.size, MAX_STEPS_PER_EPOCH);
+    
+    // Print learning parameters
+    float current_lr = LEARNING_RATE * (1.0f - (float)stats.epoch / MAX_EPISODES);
+    if (current_lr < LEARNING_RATE * 0.1f) current_lr = LEARNING_RATE * 0.1f;
+    printf("Current Learning Rate: %.6f\n", current_lr);
+    printf("Mode: %s\n", current_mode == MODE_TRAIN ? "TRAINING" : "INFERENCE");
+    
+    // Print state information
+    printf("\nCurrent State:\n");
+    printf("  Cart Position: %.4f\n", state.cart_position);
+    printf("  Cart Velocity: %.4f\n", state.cart_velocity);
+    printf("  Pole Angle: %.4f rad (%.2f deg)\n", state.pole_angle, state.pole_angle * 57.3);
+    printf("  Pole Angular Velocity: %.4f rad/s\n", state.pole_angular_vel);
+    
+    // Weight statistics for each part of the network
+    printf("\nNetwork Weight Statistics:\n");
+    
+    // Policy network stats
+    calculate_weight_stats(nn.weights1, STATE_DIM, HIDDEN_DIM, "Policy: Input->Hidden1");
+    calculate_weight_stats(nn.weights_h2h, HIDDEN_DIM, HIDDEN_DIM, "Policy: Hidden1->Hidden2");
+    calculate_weight_stats(nn.weights2, HIDDEN_DIM, ACTION_DIM, "Policy: Hidden2->Output");
+    
+    // Value network stats
+    calculate_weight_stats(nn.value_weights1, STATE_DIM, HIDDEN_DIM, "Value: Input->Hidden1");
+    calculate_weight_stats(nn.value_weights_h2h, HIDDEN_DIM, HIDDEN_DIM, "Value: Hidden1->Hidden2");
+    calculate_weight_stats(nn.value_weights2, HIDDEN_DIM, 1, "Value: Hidden2->Output");
+    
+    // Print a sample action distribution for current state
+    float normalized_state[STATE_DIM];
+    normalize_state(normalized_state, &state);
+    
+    float action_probs[ACTION_DIM];
+    policy_forward(normalized_state, action_probs);
+    
+    printf("\nCurrent Action Distribution:\n");
+    printf("  Left (0): %.4f\n", action_probs[0]);
+    printf("  Right (1): %.4f\n", action_probs[1]);
+    
+    // Print estimated value of current state
+    float value = value_forward(normalized_state);
+    printf("Estimated State Value: %.4f\n", value);
+    
+    printf("=====================================\n\n");
+}
+
+// Helper function to calculate weight statistics (mean and std dev)
+void calculate_weight_stats(float weights[][HIDDEN_DIM], int rows, int cols, char* name) {
+    float sum = 0.0f;
+    float sum_sq = 0.0f;
+    int count = 0;
+    float min_val = 999.0f;
+    float max_val = -999.0f;
+    
+    // Calculate sum and sum of squares for mean and std dev
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            float val = *((float*)weights + i*HIDDEN_DIM + j);
+            sum += val;
+            sum_sq += val * val;
+            count++;
+            
+            if (val < min_val) min_val = val;
+            if (val > max_val) max_val = val;
+        }
+    }
+    
+    float mean = sum / count;
+    float variance = (sum_sq / count) - (mean * mean);
+    float std_dev = my_sqrt(variance);
+    
+    printf("  %s: mean=%.6f, std=%.6f, min=%.6f, max=%.6f\n", 
+           name, mean, std_dev, min_val, max_val);
+}
+
+
+
+
 // initialize the neural network with small random weights
 void init_network() {
     // Get current timer value for random seed
@@ -1655,7 +1769,7 @@ void init_network() {
         random_seed = xorshift32();
     }
 
-    // He initialization for deeper networks
+    // Kaiming He initialization for deeper networks
     float init_range1 = sqrtf(2.0f / STATE_DIM);     // Input to first hidden
     float init_range2 = sqrtf(2.0f / HIDDEN_DIM);    // Hidden to hidden
     float init_range3 = sqrtf(2.0f / HIDDEN_DIM);    // Hidden to output
