@@ -46,6 +46,8 @@ void setup() {
   Serial.println("==============================================");
 }
 
+
+
 void loop() {
   // PART 1: UART Communication Monitoring
   checkUartCommunication();
