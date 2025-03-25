@@ -1,4 +1,8 @@
-#include <stdio.h>
+// Brief microsecond delay
+void delay_us(int us) {
+    volatile int i;
+    for (i = 0; i < us * (CLOCK_RATE / 1000000000); i++);
+}#include <stdio.h>
 #include <string.h>
 #include "address_map.h"
 
@@ -14,7 +18,7 @@ volatile int *KEY_ptr;      // Pointer to pushbutton KEYs
 volatile int *LEDR_ptr;     // Pointer to red LEDs
 
 // Communication parameters
-#define BIT_PERIOD_MS 10    // Bit transfer rate (10ms per bit)
+#define BIT_PERIOD_MS 1     // Fast bit transfer (1ms per bit)
 #define MSG_BUFFER_SIZE 32  // Buffer size for messages
 char rx_buffer[MSG_BUFFER_SIZE];
 char tx_buffer[MSG_BUFFER_SIZE];
@@ -81,15 +85,18 @@ void print_pin_states() {
            read_data_pin(), read_clock_pin(), read_sync_pin());
 }
 
-// Wait for clock transition with debug
+// Wait for clock transition (optimized for speed)
 int wait_for_clock_state(int desired_state, int timeout_ms) {
     int i;
-    for (i = 0; i < timeout_ms * 100; i++) {
+    const int SAMPLES_PER_MS = 100; // Check more frequently
+    const int MAX_SAMPLES = timeout_ms * SAMPLES_PER_MS;
+    
+    for (i = 0; i < MAX_SAMPLES; i++) {
         int clock_state = read_clock_pin();
         if ((desired_state && clock_state) || (!desired_state && !clock_state)) {
             return 1; // Success
         }
-        delay_ms(1); // Check every 1ms
+        delay_us(10); // Check every 10μs
     }
     
     printf("TIMEOUT waiting for CLOCK=%d after %dms\n", desired_state, timeout_ms);
@@ -189,18 +196,44 @@ void send_byte(unsigned char byte) {
     }
 }
 
-// Wait for and verify the start byte
+// Wait for and verify the start byte with fast timing
 int wait_for_start_byte() {
     unsigned char byte;
-    for (int attempt = 0; attempt < 5; attempt++) {
+    
+    // Look for multiple consecutive start bytes (more reliable)
+    int start_bytes_found = 0;
+    int required_matches = 2; // Need to see at least 2 consecutive start bytes
+    
+    while(start_bytes_found < required_matches) {
         byte = receive_byte();
+        
         if (byte == START_BYTE) {
-            printf("Valid start byte detected\n");
-            return 1;
+            start_bytes_found++;
+            if (start_bytes_found >= required_matches) {
+                printf("Valid start byte sequence detected\n");
+                return 1;
+            }
+        } else {
+            // Reset counter if we don't see consecutive start bytes
+            if (start_bytes_found > 0) {
+                printf("Broken start byte sequence\n");
+            }
+            start_bytes_found = 0;
         }
-        printf("Attempt %d: Invalid start byte: 0x%02X\n", attempt+1, byte);
-        delay_ms(1);
+        
+        // Limit total attempts
+        if (start_bytes_found == 0) {
+            static int attempt = 0;
+            attempt++;
+            printf("Attempt %d: Invalid start byte: 0x%02X\n", attempt, byte);
+            
+            if (attempt >= 5) {
+                printf("Failed to find valid start byte sequence\n");
+                return 0;
+            }
+        }
     }
+    
     return 0;
 }
 
@@ -214,16 +247,16 @@ int check_for_sync() {
         printf("\nSYNC line HIGH detected\n");
         prev_sync = current_sync;
         
-        // Verify sync is stable for at least 10ms
-        for (int i = 0; i < 10; i++) {
+        // Quick verification that SYNC is stable
+        for (int i = 0; i < 5; i++) {
+            delay_us(500);
             if (!read_sync_pin()) {
                 printf("SYNC not stable\n");
                 return 0;
             }
-            delay_ms(1);
         }
         
-        printf("SYNC verified stable\n");
+        printf("SYNC verified\n");
         return 1;
     }
     
@@ -284,52 +317,42 @@ int receive_message() {
     return success;
 }
 
-// Send response message back to Arduino
+// Send response message back to Arduino with fast timing
 void send_response() {
     // Turn on LED 4 during response transmission
     *LEDR_ptr |= 0x10;
     
-    printf("Preparing to send response\n");
+    printf("Preparing response\n");
     
     // Create response message
     sprintf(tx_buffer, "DE1_MSG_%d", message_counter++);
     int len = strlen(tx_buffer);
     
-    printf("Response message: \"%s\"\n", tx_buffer);
-    
-    // Signal Arduino we have a response by pulling DATA high
-    // while SYNC is still high from Arduino
+    // Signal Arduino we have a response
     set_data_pin_direction(1);
     set_data_pin(1);  // Pull DATA high
     
     printf("Signaling response ready\n");
     
-    // Wait for Arduino to acknowledge with clock toggle
-    // Use a longer timeout and check for the complete cycle
-    if (!wait_for_clock_state(0, 1000)) {  // Wait for clock to go LOW
-        printf("No acknowledge from Arduino, aborting response\n");
-        // Ensure data pin is back to input mode
+    // Wait for acknowledge from Arduino (clock pulse)
+    if (!wait_for_clock_state(0, 20)) {
+        printf("No acknowledge from Arduino\n");
         set_data_pin_direction(0);
         *LEDR_ptr &= ~0x10;
         return;
     }
     
-    // Wait for clock to go back HIGH
-    if (!wait_for_clock_state(1, 1000)) {
-        printf("Incomplete clock cycle, aborting response\n");
-        // Ensure data pin is back to input mode
+    if (!wait_for_clock_state(1, 20)) {
+        printf("Incomplete clock cycle\n");
         set_data_pin_direction(0);
         *LEDR_ptr &= ~0x10;
         return;
     }
     
-    printf("Arduino acknowledged, sending response\n");
-    
-    // Small delay to ensure Arduino is ready to receive
-    delay_ms(50);
-    
-    // Send start byte
-    send_byte(START_BYTE);
+    // Send start bytes - send multiple for reliability
+    for (int i = 0; i < 3; i++) {
+        send_byte(START_BYTE);
+    }
     
     // Send length byte
     send_byte((unsigned char)len);
@@ -341,10 +364,10 @@ void send_response() {
     
     printf("Response sent\n");
     
-    // Turn off LED 4
+    // Turn off LED
     *LEDR_ptr &= ~0x10;
     
-    // Ensure data pin is back to input mode
+    // Return to input mode
     set_data_pin_direction(0);
 }
 
@@ -397,7 +420,7 @@ int main(void) {
                 counter = 0;
             }
         }
-         
+        
         // Small delay
         delay_ms(1);
     }
