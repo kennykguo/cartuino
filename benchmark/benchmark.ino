@@ -21,7 +21,7 @@ int message_counter = 0;
 #define START_BYTE 0xAA  // 10101010 pattern for sync
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(19200);
   
   // Configure pins with explicit modes
   pinMode(DATA_PIN, OUTPUT);
