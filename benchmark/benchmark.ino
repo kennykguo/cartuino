@@ -12,15 +12,9 @@
 #define SYNC_PIN 5   // For sync/handshake line (D5)
 
 // Communication parameters
-#define BIT_PERIOD_MS 10    // Bit transfer rate (10ms per bit)
-#define MSG_BUFFER_SIZE 32  // Buffer size for messages
-char tx_buffer[MSG_BUFFER_SIZE];
-char rx_buffer[MSG_BUFFER_SIZE];
-int message_counter = 0;
-
-// Protocol constants
-#define START_BYTE 0xAA  // 10101010 pattern for sync
-#define RESPONSE_WAIT_MS 500 // Time to wait for response after sending
+#define BIT_PERIOD_MS 1     // Fast bit transfer (1ms per bit)
+#define SETUP_DELAY_US 100  // Setup time in microseconds
+#define RESPONSE_WAIT_MS 200 // Time to wait for response
 
 void setup() {
   Serial.begin(19200);
@@ -51,21 +45,18 @@ void setup() {
 
 // Send a single bit with explicit timing
 void sendBit(int bit) {
-  // First set clock HIGH (inactive)
-  digitalWrite(CLOCK_PIN, HIGH);
-  delay(5);
-  
-  // Set data bit value
+  // Set data bit value first
+  pinMode(DATA_PIN, OUTPUT);
   digitalWrite(DATA_PIN, bit ? HIGH : LOW);
-  delay(5); // Setup time
+  delayMicroseconds(SETUP_DELAY_US); // Short setup time
   
   // Toggle clock LOW (active, FPGA reads on this edge)
   digitalWrite(CLOCK_PIN, LOW);
-  delay(BIT_PERIOD_MS); // Hold time
+  delayMicroseconds(BIT_PERIOD_MS * 500); // Half period in μs
   
   // Return clock HIGH (inactive)
   digitalWrite(CLOCK_PIN, HIGH);
-  delay(5); // Recovery time
+  delayMicroseconds(BIT_PERIOD_MS * 500); // Half period in μs
 }
 
 // Receive a single bit
@@ -135,163 +126,138 @@ void sendMessage() {
   sprintf(tx_buffer, "ARD_MSG_%d", message_counter++);
   int len = strlen(tx_buffer);
   
-  // Turn on LED during transmission
   digitalWrite(LED_BUILTIN, HIGH);
+  Serial.print("Sending: \""); Serial.print(tx_buffer); Serial.println("\"");
   
-  Serial.print("Sending: \"");
-  Serial.print(tx_buffer);
-  Serial.println("\"");
-  
-  // Step 1: Begin with sync handshake
-  Serial.println("Starting sync handshake");
+  // Fast sync and start sequence
   digitalWrite(SYNC_PIN, HIGH);
-  delay(100); // Long delay to ensure FPGA notices
+  delayMicroseconds(5000); // 5ms sync pulse
   
-  // Step 2: Make sure clock is in known state
+  // Reset clock state
   digitalWrite(CLOCK_PIN, HIGH);
-  delay(50);
+  delayMicroseconds(1000);
   
-  // Step 3: Send start byte (synchronization pattern)
+  // Send synchronization pattern several times
+  for (int i = 0; i < 3; i++) {
+    sendByte(START_BYTE);
+  }
+  
+  // Send actual start byte for message
   sendByte(START_BYTE);
   
-  // Step 4: Send length byte
+  // Send length byte
   sendByte((unsigned char)len);
   
-  // Step 5: Send message bytes
+  // Send message bytes
   for (int i = 0; i < len; i++) {
     sendByte((unsigned char)tx_buffer[i]);
   }
   
-  // Step 6: End transmission
   Serial.println("Message sent");
-  
-  // Keep SYNC high to indicate we're ready for response
-  delay(50);
-  
-  // Turn off LED for sending
-  digitalWrite(LED_BUILTIN, LOW);
 }
 
 // Check for and receive response from DE1-SoC
 bool receiveResponse() {
-  unsigned char byte, length;
-  int i;
+  unsigned char byte;
+  unsigned long startTime = millis();
   
-  Serial.println("Waiting for response...");
-  
-  // Set data pin as input with pullup disabled
+  // Reset state and wait for response signal
   pinMode(DATA_PIN, INPUT);
   
-  // Wait for FPGA to pull DATA high to indicate response ready
-  unsigned long startTime = millis();
+  // Wait for FPGA to pull DATA high (response ready)
   while (digitalRead(DATA_PIN) == LOW) {
-    // Timeout after specified wait time
     if (millis() - startTime > RESPONSE_WAIT_MS) {
-      Serial.println("No response detected");
-      digitalWrite(SYNC_PIN, LOW); // Release SYNC line
+      Serial.println("No response");
+      digitalWrite(SYNC_PIN, LOW);
       return false;
     }
-    delay(1);
+    delayMicroseconds(100);
   }
   
   Serial.println("Response detected");
   
-  // Turn on LED for receiving
-  digitalWrite(LED_BUILTIN, HIGH);
-  
-  // Acknowledge by toggling clock - this is critical for FPGA
+  // Quick clock pulse acknowledgment
   digitalWrite(CLOCK_PIN, LOW);
-  delay(20);
+  delayMicroseconds(500);
   digitalWrite(CLOCK_PIN, HIGH);
-  delay(20);
+  delayMicroseconds(500);
   
-  // Explicitly reset clock state
-  digitalWrite(CLOCK_PIN, HIGH);
-  delay(10);
-  
-  // Now enter active receiving loop for the response
-  // Ensure we're explicitly toggling the clock for each bit
-  
-  // Receive start byte
-  byte = 0;
-  for (i = 7; i >= 0; i--) {
-    // Explicitly control clock for each bit
-    digitalWrite(CLOCK_PIN, HIGH);
-    delay(5);
-    digitalWrite(CLOCK_PIN, LOW);
-    delay(BIT_PERIOD_MS);
-    // Read bit while clock is LOW
-    int bit = digitalRead(DATA_PIN);
-    byte |= (bit << i);
-    digitalWrite(CLOCK_PIN, HIGH);
-    delay(5);
-  }
-  
-  Serial.print("RX: 0x");
-  if (byte < 16) Serial.print("0");
-  Serial.println(byte, HEX);
-  
-  if (byte != START_BYTE) {
-    Serial.println("Invalid start byte in response");
-    digitalWrite(SYNC_PIN, LOW); // Release SYNC line
-    digitalWrite(LED_BUILTIN, LOW);
-    return false;
-  }
-  
-  // Receive length byte
-  byte = 0;
-  for (i = 7; i >= 0; i--) {
-    digitalWrite(CLOCK_PIN, HIGH);
-    delay(5);
-    digitalWrite(CLOCK_PIN, LOW);
-    delay(BIT_PERIOD_MS);
-    int bit = digitalRead(DATA_PIN);
-    byte |= (bit << i);
-    digitalWrite(CLOCK_PIN, HIGH);
-    delay(5);
-  }
-  
-  Serial.print("RX: 0x");
-  if (byte < 16) Serial.print("0");
-  Serial.println(byte, HEX);
-  
-  length = byte;
-  if (length >= MSG_BUFFER_SIZE || length == 0) {
-    Serial.println("Invalid response length");
-    digitalWrite(SYNC_PIN, LOW);
-    digitalWrite(LED_BUILTIN, LOW);
-    return false;
-  }
-  
-  // Receive message bytes
-  for (i = 0; i < length; i++) {
-    // Read each byte bit by bit with explicit clock control
+  // Read response with active clock control
+  // First, look for start byte pattern (multiple attempts)
+  for (int attempt = 0; attempt < 3; attempt++) {
+    // Read a byte with active clock control
     byte = 0;
-    for (int j = 7; j >= 0; j--) {
+    for (int i = 7; i >= 0; i--) {
       digitalWrite(CLOCK_PIN, HIGH);
-      delay(5);
+      delayMicroseconds(SETUP_DELAY_US);
       digitalWrite(CLOCK_PIN, LOW);
-      delay(BIT_PERIOD_MS);
+      delayMicroseconds(BIT_PERIOD_MS * 500);
       int bit = digitalRead(DATA_PIN);
-      byte |= (bit << j);
+      byte |= (bit << i);
       digitalWrite(CLOCK_PIN, HIGH);
-      delay(5);
+      delayMicroseconds(BIT_PERIOD_MS * 500);
     }
+    
     Serial.print("RX: 0x");
     if (byte < 16) Serial.print("0");
     Serial.println(byte, HEX);
+    
+    if (byte == START_BYTE) {
+      // Found valid start byte, proceed with message
+      break;
+    }
+    
+    if (attempt == 2) {
+      Serial.println("Failed to find valid start byte");
+      digitalWrite(SYNC_PIN, LOW);
+      digitalWrite(LED_BUILTIN, LOW);
+      return false;
+    }
+  }
+  
+  // Read length
+  byte = 0;
+  for (int i = 7; i >= 0; i--) {
+    digitalWrite(CLOCK_PIN, HIGH);
+    delayMicroseconds(SETUP_DELAY_US);
+    digitalWrite(CLOCK_PIN, LOW);
+    delayMicroseconds(BIT_PERIOD_MS * 500);
+    int bit = digitalRead(DATA_PIN);
+    byte |= (bit << i);
+    digitalWrite(CLOCK_PIN, HIGH);
+    delayMicroseconds(BIT_PERIOD_MS * 500);
+  }
+  
+  int length = byte;
+  if (length >= MSG_BUFFER_SIZE || length == 0) {
+    Serial.println("Invalid length");
+    digitalWrite(SYNC_PIN, LOW);
+    return false;
+  }
+  
+  // Read message bytes
+  for (int i = 0; i < length; i++) {
+    byte = 0;
+    for (int j = 7; j >= 0; j--) {
+      digitalWrite(CLOCK_PIN, HIGH);
+      delayMicroseconds(SETUP_DELAY_US);
+      digitalWrite(CLOCK_PIN, LOW);
+      delayMicroseconds(BIT_PERIOD_MS * 500);
+      int bit = digitalRead(DATA_PIN);
+      byte |= (bit << j);
+      digitalWrite(CLOCK_PIN, HIGH);
+      delayMicroseconds(BIT_PERIOD_MS * 500);
+    }
     rx_buffer[i] = (char)byte;
   }
-  rx_buffer[i] = '\0'; // Null-terminate
+  rx_buffer[length] = '\0';
   
-  Serial.print("Response received: \"");
+  Serial.print("Response: \"");
   Serial.print(rx_buffer);
   Serial.println("\"");
   
-  // End bidirectional session
   digitalWrite(SYNC_PIN, LOW);
   digitalWrite(LED_BUILTIN, LOW);
-  
   return true;
 }
 
