@@ -13,7 +13,7 @@ volatile int *KEY_ptr;      // Pointer to pushbutton KEYs
 volatile int *LEDR_ptr;     // Pointer to red LEDs
 
 // Communication parameters
-#define BIT_PERIOD_MS 20    // 20ms per bit (matching Arduino)
+#define BIT_PERIOD_MS 40    // 40ms per bit (matching Arduino)
 #define MSG_BUFFER_SIZE 32  // Buffer size for messages
 char rx_buffer[MSG_BUFFER_SIZE];
 
@@ -74,15 +74,32 @@ int read_clock_pin() {
     return (*(JP1_ptr) & CLOCK_PIN_BIT) ? 1 : 0;
 }
 
-// Wait for clock edge with timeout protection
+// Wait for clock edge with timeout protection and multiple samples
 int wait_for_clock_edge(int wait_for_high) {
-    int i;
-    const int MAX_WAIT = 1000000;  // Arbitrary timeout value
+    int i, j;
+    const int MAX_WAIT = 2000000;  // Longer timeout
+    const int SAMPLE_COUNT = 3;    // Number of consecutive samples needed
     
     // Wait for desired clock state
     for (i = 0; i < MAX_WAIT; i++) {
-        int clock_state = read_clock_pin();
-        if ((wait_for_high && clock_state) || (!wait_for_high && !clock_state)) {
+        int consecutive_matches = 0;
+        
+        // Take multiple samples
+        for (j = 0; j < SAMPLE_COUNT; j++) {
+            int clock_state = read_clock_pin();
+            if ((wait_for_high && clock_state) || (!wait_for_high && !clock_state)) {
+                consecutive_matches++;
+            } else {
+                consecutive_matches = 0;
+                break;
+            }
+            
+            // Small delay between samples
+            delay_ms(1);
+        }
+        
+        // If we got enough consecutive matches, we've detected a stable edge
+        if (consecutive_matches >= SAMPLE_COUNT) {
             return 1;  // Success
         }
     }
@@ -141,6 +158,9 @@ int wait_for_start_byte(int max_attempts) {
         } else {
             printf("Attempt %d: Invalid start byte: 0x%02X (expected 0x%02X)\n", 
                    i+1, byte, START_BYTE);
+            
+            // Add a small delay between attempts
+            delay_ms(50);
         }
     }
     
@@ -158,8 +178,8 @@ int receive_simple_message() {
     
     printf("Waiting for message from Arduino...\n");
     
-    // Try to detect start byte
-    if (!wait_for_start_byte(3)) {
+    // Try to detect start byte with more attempts
+    if (!wait_for_start_byte(5)) {
         printf("Failed to detect start byte sequence\n");
         *LEDR_ptr &= ~0x1;
         return 0;
