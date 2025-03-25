@@ -397,7 +397,7 @@ int main(void) {
                 counter = 0;
             }
         }
-        
+         
         // Small delay
         delay_ms(1);
     }
