@@ -12,9 +12,9 @@
 #define SYNC_PIN 5   // For sync/handshake line (D5)
 
 // Communication parameters
-#define BIT_PERIOD_MS 1     // Fast bit transfer (1ms per bit)
-#define SETUP_DELAY_US 100  // Setup time in microseconds
-#define RESPONSE_WAIT_MS 200 // Time to wait for response
+#define BIT_PERIOD_MS 5     // Slower but more reliable (5ms per bit)
+#define SETUP_DELAY_US 500  // Longer setup time
+#define SYNC_PULSE_MS 20    // Longer sync pulse
 #define MSG_BUFFER_SIZE 32  // Buffer size for messages
 #define START_BYTE 0xAA     // 10101010 pattern for sync
 
@@ -52,18 +52,18 @@ void setup() {
 
 // Send a single bit with explicit timing
 void sendBit(int bit) {
-  // Set data bit value first
+  // Set data bit value first and hold it stable
   pinMode(DATA_PIN, OUTPUT);
   digitalWrite(DATA_PIN, bit ? HIGH : LOW);
-  delayMicroseconds(SETUP_DELAY_US); // Short setup time
+  delayMicroseconds(SETUP_DELAY_US);
   
   // Toggle clock LOW (active, FPGA reads on this edge)
   digitalWrite(CLOCK_PIN, LOW);
-  delayMicroseconds(BIT_PERIOD_MS * 500); // Half period in μs
+  delay(BIT_PERIOD_MS / 2);
   
   // Return clock HIGH (inactive)
   digitalWrite(CLOCK_PIN, HIGH);
-  delayMicroseconds(BIT_PERIOD_MS * 500); // Half period in μs
+  delay(BIT_PERIOD_MS / 2);
 }
 
 // Receive a single bit
@@ -136,23 +136,25 @@ void sendMessage() {
   digitalWrite(LED_BUILTIN, HIGH);
   Serial.print("Sending: \""); Serial.print(tx_buffer); Serial.println("\"");
   
-  // Fast sync and start sequence
+  // Strong sync sequence
   digitalWrite(SYNC_PIN, HIGH);
-  delayMicroseconds(5000); // 5ms sync pulse
+  delay(SYNC_PULSE_MS); // Longer sync pulse
   
-  // Reset clock state
+  // Reset clock state and wait
   digitalWrite(CLOCK_PIN, HIGH);
-  delayMicroseconds(1000);
+  delay(10);
   
-  // Send synchronization pattern several times
-  for (int i = 0; i < 3; i++) {
-    sendByte(START_BYTE);
-  }
+  // Send distinctive preamble pattern
+  // Send 0xAA, 0x55, 0xAA sequence (alternating pattern)
+  sendByte(0xAA);
+  delay(5);
+  sendByte(0x55);
+  delay(5);
+  sendByte(0xAA);
+  delay(5);
   
-  // Send actual start byte for message
-  sendByte(START_BYTE);
-  
-  // Send length byte
+  // Send actual message
+  sendByte(START_BYTE);  // Final start byte
   sendByte((unsigned char)len);
   
   // Send message bytes

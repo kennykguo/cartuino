@@ -14,7 +14,7 @@ volatile int *KEY_ptr;      // Pointer to pushbutton KEYs
 volatile int *LEDR_ptr;     // Pointer to red LEDs
 
 // Communication parameters
-#define BIT_PERIOD_MS 1     // Fast bit transfer (1ms per bit)
+#define BIT_PERIOD_MS 5     // Match Arduino's timing
 #define MSG_BUFFER_SIZE 32  // Buffer size for messages
 #define START_BYTE 0xAA     // 10101010 pattern for synchronization
 
@@ -177,41 +177,30 @@ void send_byte(unsigned char byte) {
     }
 }
 
-// Wait for and verify start byte sequence
-int wait_for_start_byte() {
-    unsigned char byte;
+// Wait for and verify distinct preamble pattern
+int wait_for_start_pattern() {
+    unsigned char bytes[4];
+    printf("Looking for preamble pattern...\n");
     
-    // Look for multiple consecutive start bytes
-    int start_bytes_found = 0;
-    int max_attempts = 10;
-    int attempt = 0;
-    
-    while (start_bytes_found < 2 && attempt < max_attempts) {
-        byte = receive_byte();
-        attempt++;
+    // Collect up to 10 bytes looking for the pattern
+    for (int i = 0; i < 10; i++) {
+        // Shift the array to make room for new byte
+        for (int j = 0; j < 3; j++) {
+            bytes[j] = bytes[j+1];
+        }
         
-        if (byte == START_BYTE) {
-            start_bytes_found++;
-            if (start_bytes_found >= 2) {
-                printf("Valid start sequence\n");
-                return 1;
-            }
-        } else {
-            // Reset counter if sequence broken
-            if (start_bytes_found > 0) {
-                printf("Broken start sequence\n");
-            } else {
-                printf("Attempt %d: Invalid start: 0x%02X\n", attempt, byte);
-            }
-            start_bytes_found = 0;
-            
-            if (attempt >= max_attempts) {
-                printf("Failed to find start sequence\n");
-                return 0;
-            }
+        // Read new byte
+        bytes[3] = receive_byte();
+        
+        // Check for distinctive pattern: 0xAA, 0x55, 0xAA, 0xAA
+        if (bytes[0] == 0xAA && bytes[1] == 0x55 && 
+            bytes[2] == 0xAA && bytes[3] == 0xAA) {
+            printf("Found preamble pattern!\n");
+            return 1;
         }
     }
     
+    printf("Failed to find preamble pattern\n");
     return 0;
 }
 
@@ -242,16 +231,16 @@ int check_for_sync() {
 
 // Receive a message from the Arduino
 int receive_message() {
-    unsigned char byte, length;
+    unsigned char length;
     
     // Turn on LED 0 during reception
     *LEDR_ptr |= 0x1;
     
     printf("Starting reception\n");
     
-    // Wait for start byte sequence
-    if (!wait_for_start_byte()) {
-        printf("Failed to find valid start byte\n");
+    // Wait for start pattern
+    if (!wait_for_start_pattern()) {
+        printf("Failed to find valid start pattern\n");
         *LEDR_ptr &= ~0x1;
         *LEDR_ptr |= 0x8;  // Error LED
         delay_ms(1);
@@ -259,7 +248,8 @@ int receive_message() {
         return 0;
     }
     
-    // Receive length byte
+    // We've already received the start byte as part of the pattern
+    // Receive length byte directly
     length = receive_byte();
     printf("Message length: %d bytes\n", length);
     
