@@ -31,7 +31,7 @@ void delay_ms(int ms) {
     volatile int i;
     for (i = 0; i < ms * (CLOCK_RATE / 100000); i++);
 }
- 
+
 // Initialize the JP1 port for communication
 void init_jp1_communication() {
     // Set all pins as input initially
@@ -124,22 +124,39 @@ int receive_bit() {
     return bit;
 }
 
-// Send a single bit
+// Send a single bit with retry
 void send_bit(int bit) {
+    int retries = 3;
+    
     // Set DATA pin as output with the bit value
     set_data_pin_direction(1);
     set_data_pin(bit);
     
-    // Wait for clock to go LOW
-    if (!wait_for_clock_state(0, 50)) {
-        printf("Send bit timeout waiting for clock LOW\n");
-        return;
+    // Try multiple times to wait for clock
+    while (retries > 0) {
+        // Wait for clock to go LOW with shorter timeout
+        if (wait_for_clock_state(0, 20)) {
+            // Success! Clock went LOW
+            
+            // Keep data value stable while clock is LOW
+            
+            // Wait for clock to return HIGH
+            wait_for_clock_state(1, 20);
+            return; // Success
+        }
+        
+        // Clock didn't go LOW, retry
+        retries--;
+        printf("Retrying bit send, %d retries left\n", retries);
+        
+        // Briefly pulse data line to get Arduino's attention
+        set_data_pin(!bit);
+        delay_ms(1);
+        set_data_pin(bit);
+        delay_ms(1);
     }
     
-    // Keep data value stable while clock is LOW
-    
-    // Wait for clock to return HIGH
-    wait_for_clock_state(1, 50);
+    printf("Failed to send bit after retries\n");
 }
 
 // Receive a byte (8 bits) MSB first
@@ -288,10 +305,28 @@ void send_response() {
     printf("Signaling response ready\n");
     
     // Wait for Arduino to acknowledge with clock toggle
-    wait_for_clock_state(0, 500);  // Wait for clock to go LOW
-    wait_for_clock_state(1, 500);  // Wait for clock to go HIGH
+    // Use a longer timeout and check for the complete cycle
+    if (!wait_for_clock_state(0, 1000)) {  // Wait for clock to go LOW
+        printf("No acknowledge from Arduino, aborting response\n");
+        // Ensure data pin is back to input mode
+        set_data_pin_direction(0);
+        *LEDR_ptr &= ~0x10;
+        return;
+    }
+    
+    // Wait for clock to go back HIGH
+    if (!wait_for_clock_state(1, 1000)) {
+        printf("Incomplete clock cycle, aborting response\n");
+        // Ensure data pin is back to input mode
+        set_data_pin_direction(0);
+        *LEDR_ptr &= ~0x10;
+        return;
+    }
     
     printf("Arduino acknowledged, sending response\n");
+    
+    // Small delay to ensure Arduino is ready to receive
+    delay_ms(50);
     
     // Send start byte
     send_byte(START_BYTE);
@@ -308,6 +343,9 @@ void send_response() {
     
     // Turn off LED 4
     *LEDR_ptr &= ~0x10;
+    
+    // Ensure data pin is back to input mode
+    set_data_pin_direction(0);
 }
 
 // Main function

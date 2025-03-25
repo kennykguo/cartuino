@@ -179,7 +179,7 @@ bool receiveResponse() {
   
   Serial.println("Waiting for response...");
   
-  // Set data pin as input to check if FPGA wants to respond
+  // Set data pin as input with pullup disabled
   pinMode(DATA_PIN, INPUT);
   
   // Wait for FPGA to pull DATA high to indicate response ready
@@ -199,14 +199,38 @@ bool receiveResponse() {
   // Turn on LED for receiving
   digitalWrite(LED_BUILTIN, HIGH);
   
-  // Acknowledge by toggling clock
+  // Acknowledge by toggling clock - this is critical for FPGA
   digitalWrite(CLOCK_PIN, LOW);
   delay(20);
   digitalWrite(CLOCK_PIN, HIGH);
   delay(20);
   
+  // Explicitly reset clock state
+  digitalWrite(CLOCK_PIN, HIGH);
+  delay(10);
+  
+  // Now enter active receiving loop for the response
+  // Ensure we're explicitly toggling the clock for each bit
+  
   // Receive start byte
-  byte = receiveByte();
+  byte = 0;
+  for (i = 7; i >= 0; i--) {
+    // Explicitly control clock for each bit
+    digitalWrite(CLOCK_PIN, HIGH);
+    delay(5);
+    digitalWrite(CLOCK_PIN, LOW);
+    delay(BIT_PERIOD_MS);
+    // Read bit while clock is LOW
+    int bit = digitalRead(DATA_PIN);
+    byte |= (bit << i);
+    digitalWrite(CLOCK_PIN, HIGH);
+    delay(5);
+  }
+  
+  Serial.print("RX: 0x");
+  if (byte < 16) Serial.print("0");
+  Serial.println(byte, HEX);
+  
   if (byte != START_BYTE) {
     Serial.println("Invalid start byte in response");
     digitalWrite(SYNC_PIN, LOW); // Release SYNC line
@@ -215,7 +239,23 @@ bool receiveResponse() {
   }
   
   // Receive length byte
-  length = receiveByte();
+  byte = 0;
+  for (i = 7; i >= 0; i--) {
+    digitalWrite(CLOCK_PIN, HIGH);
+    delay(5);
+    digitalWrite(CLOCK_PIN, LOW);
+    delay(BIT_PERIOD_MS);
+    int bit = digitalRead(DATA_PIN);
+    byte |= (bit << i);
+    digitalWrite(CLOCK_PIN, HIGH);
+    delay(5);
+  }
+  
+  Serial.print("RX: 0x");
+  if (byte < 16) Serial.print("0");
+  Serial.println(byte, HEX);
+  
+  length = byte;
   if (length >= MSG_BUFFER_SIZE || length == 0) {
     Serial.println("Invalid response length");
     digitalWrite(SYNC_PIN, LOW);
@@ -225,7 +265,21 @@ bool receiveResponse() {
   
   // Receive message bytes
   for (i = 0; i < length; i++) {
-    byte = receiveByte();
+    // Read each byte bit by bit with explicit clock control
+    byte = 0;
+    for (int j = 7; j >= 0; j--) {
+      digitalWrite(CLOCK_PIN, HIGH);
+      delay(5);
+      digitalWrite(CLOCK_PIN, LOW);
+      delay(BIT_PERIOD_MS);
+      int bit = digitalRead(DATA_PIN);
+      byte |= (bit << j);
+      digitalWrite(CLOCK_PIN, HIGH);
+      delay(5);
+    }
+    Serial.print("RX: 0x");
+    if (byte < 16) Serial.print("0");
+    Serial.println(byte, HEX);
     rx_buffer[i] = (char)byte;
   }
   rx_buffer[i] = '\0'; // Null-terminate
