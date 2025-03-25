@@ -9,36 +9,31 @@
 #define DATA_PIN 2   // D2 for data line - connects to DE1-SoC D0
 
 // Communication parameters
-#define BIT_PERIOD_MS 20    // 20ms per bit - faster than previous version
+#define BIT_PERIOD_MS 20    // 20ms per bit
 #define MSG_BUFFER_SIZE 32  // Buffer size for messages
 char tx_buffer[MSG_BUFFER_SIZE];
 char rx_buffer[MSG_BUFFER_SIZE];
 
 // Message counter and state tracking
 int message_counter = 0;
-bool message_exchange_in_progress = false;
-bool waiting_for_response = false;
+unsigned long lastMessageTime = 0;
+unsigned long messageSendInterval = 5000;  // Send message every 5 seconds
 
 // Protocol constants
 #define START_BYTE 0xAA  // 10101010 pattern for synchronization
 #define END_BYTE 0x55    // 01010101 pattern for end of message
 #define ACK_BYTE 0xCC    // 11001100 pattern for acknowledgment
 
-// Timer for automatic message sending
-unsigned long lastMessageTime = 0;
-unsigned long messageSendInterval = 5000;  // Send message every 5 seconds
-
 void setup() {
   // Setup USB serial for debugging output
   Serial.begin(9600);
   
-  // Configure pins
+  // Configure pins with pulldowns to prevent floating
   pinMode(CLOCK_PIN, OUTPUT);
-  pinMode(DATA_PIN, OUTPUT);  // Start as output
+  pinMode(DATA_PIN, INPUT);  // Start as input to avoid conflicts
   
   // Initialize pins to known states
   digitalWrite(CLOCK_PIN, HIGH);
-  digitalWrite(DATA_PIN, LOW);
   
   // Configure built-in LED
   pinMode(LED_BUILTIN, OUTPUT);
@@ -62,37 +57,38 @@ void setup() {
   Serial.println("==============================================");
 }
 
-// Send a single bit (simple approach)
+// Send a single bit (with explicit clock control)
 void sendBit(int bit) {
-  // First set data line
+  // Set data line to desired value
+  pinMode(DATA_PIN, OUTPUT);
   digitalWrite(DATA_PIN, bit ? HIGH : LOW);
-  delay(5);  // Give time for line to stabilize
+  delay(5);  // Setup time
   
-  // Clock low (signal bit is ready)
+  // Clock LOW to indicate bit is ready
   digitalWrite(CLOCK_PIN, LOW);
   delay(BIT_PERIOD_MS / 2);
   
-  // Clock high (complete bit)
+  // Clock HIGH to complete bit transmission
   digitalWrite(CLOCK_PIN, HIGH);
   delay(BIT_PERIOD_MS / 2);
 }
 
-// Receive a single bit
+// Receive a single bit (with explicit clock control)
 int receiveBit() {
   int bit;
   
-  // Set data pin as input
+  // Set data pin as input to allow DE1-SoC to drive it
   pinMode(DATA_PIN, INPUT);
-  delay(2);  // Give time for mode change to take effect
+  delay(5);  // Mode change settling time
   
-  // Clock low (signal ready to read)
+  // Clock LOW to trigger DE1-SoC to set data bit
   digitalWrite(CLOCK_PIN, LOW);
   delay(BIT_PERIOD_MS / 2);
   
-  // Read data bit
+  // Read the data bit at the middle of the clock pulse
   bit = digitalRead(DATA_PIN);
   
-  // Clock high (complete bit read)
+  // Clock HIGH to complete the bit read
   digitalWrite(CLOCK_PIN, HIGH);
   delay(BIT_PERIOD_MS / 2);
   
@@ -105,27 +101,16 @@ void sendByte(unsigned char byte) {
   if (byte < 16) Serial.print("0");
   Serial.println(byte, HEX);
   
-  // Set as output before sending
-  pinMode(DATA_PIN, OUTPUT);
-  delay(5);
-  
   // Send each bit, MSB first
   for (int i = 7; i >= 0; i--) {
     int bit = (byte >> i) & 0x01;
     sendBit(bit);
   }
-  
-  // Small pause between bytes
-  delay(10);
 }
 
 // Receive a byte (8 bits) MSB first
 unsigned char receiveByte() {
   unsigned char byte = 0;
-  
-  // Set as input before receiving
-  pinMode(DATA_PIN, INPUT);
-  delay(5);
   
   // Receive 8 bits, MSB first
   for (int i = 7; i >= 0; i--) {
@@ -144,41 +129,58 @@ unsigned char receiveByte() {
 void initCommunication() {
   Serial.println("Initializing communication sequence...");
   
-  // Signal initialization with clear clock/data pattern
-  pinMode(DATA_PIN, OUTPUT);
+  // Clear the bus
+  pinMode(DATA_PIN, INPUT);  // First release the data line
   pinMode(CLOCK_PIN, OUTPUT);
-  
-  // Reset to known state
   digitalWrite(CLOCK_PIN, HIGH);
-  digitalWrite(DATA_PIN, LOW);
-  delay(100);
+  delay(200);  // Long setup delay
   
-  // Send initialization pattern (10 clock pulses with data low)
-  for (int i = 0; i < 10; i++) {
+  // Send synchronization pattern (16 clock pulses)
+  for (int i = 0; i < 16; i++) {
     digitalWrite(CLOCK_PIN, LOW);
-    delay(25);
+    delay(30);
     digitalWrite(CLOCK_PIN, HIGH);
-    delay(25);
+    delay(30);
   }
   
-  // Another reset
+  // Reset to idle state
   digitalWrite(CLOCK_PIN, HIGH);
-  digitalWrite(DATA_PIN, LOW);
-  delay(100);
+  delay(200);  // Another long delay
   
   Serial.println("Initialization complete");
 }
 
-// Send a message
-void sendMessage(char *message) {
-  int len = strlen(message);
+// Reset the bus to a known state
+void resetBus() {
+  // Release the data line first
+  pinMode(DATA_PIN, INPUT);
+  delay(10);
+  
+  // Set clock high (idle state)
+  digitalWrite(CLOCK_PIN, HIGH);
+  delay(100);
+  
+  // Send a few reset pulses
+  for (int i = 0; i < 4; i++) {
+    digitalWrite(CLOCK_PIN, LOW);
+    delay(20);
+    digitalWrite(CLOCK_PIN, HIGH);
+    delay(20);
+  }
+}
+
+// Send a message to the DE1-SoC
+bool sendMessage() {
+  // Create test message
+  sprintf(tx_buffer, "ARD_MSG_%d", message_counter++);
+  int len = strlen(tx_buffer);
   unsigned char checksum = 0;
   
   // Turn on LED during transmission
   digitalWrite(LED_BUILTIN, HIGH);
   
   Serial.print("Sending message: \"");
-  Serial.print(message);
+  Serial.print(tx_buffer);
   Serial.print("\" (");
   Serial.print(len);
   Serial.println(" bytes)");
@@ -192,8 +194,8 @@ void sendMessage(char *message) {
   
   // Send each byte of the message
   for (int i = 0; i < len; i++) {
-    sendByte((unsigned char)message[i]);
-    checksum ^= message[i];
+    sendByte((unsigned char)tx_buffer[i]);
+    checksum ^= tx_buffer[i];
   }
   
   // Send checksum
@@ -202,17 +204,22 @@ void sendMessage(char *message) {
   // Send end byte
   sendByte(END_BYTE);
   
+  Serial.println("Message sent, waiting for response...");
+  
   // Turn off LED
   digitalWrite(LED_BUILTIN, LOW);
   
-  Serial.println("Message sent, waiting for response...");
+  // Give DE1-SoC time to process and prepare response
+  delay(300);
   
-  // Set flag to wait for response
-  waiting_for_response = true;
+  // Reset bus before receiving
+  resetBus();
+  
+  return receiveResponse();
 }
 
-// Receive a message
-bool receiveMessage() {
+// Receive a response from the DE1-SoC
+bool receiveResponse() {
   unsigned char byte, length, checksum = 0, calculated_checksum = 0;
   bool success = false;
   
@@ -222,7 +229,7 @@ bool receiveMessage() {
   Serial.println("Receiving response from DE1-SoC...");
   
   // Wait for start byte with retry
-  int max_retries = 3;
+  int max_retries = 5;
   bool start_found = false;
   
   for (int retry = 0; retry < max_retries && !start_found; retry++) {
@@ -236,6 +243,9 @@ bool receiveMessage() {
       Serial.print(": Invalid start byte: 0x");
       if (byte < 16) Serial.print("0");
       Serial.println(byte, HEX);
+      
+      // Send reset clock pulses between retries
+      resetBus();
       delay(50);
     }
   }
@@ -255,8 +265,8 @@ bool receiveMessage() {
   Serial.println(" bytes");
   
   // Ensure length is reasonable
-  if (length >= MSG_BUFFER_SIZE) {
-    Serial.print("Message too long: ");
+  if (length >= MSG_BUFFER_SIZE || length == 0) {
+    Serial.print("Invalid message length: ");
     Serial.print(length);
     Serial.println(" bytes");
     digitalWrite(LED_BUILTIN, LOW);
@@ -301,7 +311,9 @@ bool receiveMessage() {
     success = true;
   }
   
-  // Send ACK
+  // Send ACK regardless of success (to complete the protocol)
+  pinMode(DATA_PIN, OUTPUT);
+  delay(10);
   sendByte(ACK_BYTE);
   
   // Turn off LED
@@ -310,43 +322,46 @@ bool receiveMessage() {
   return success;
 }
 
+// Perform a complete message exchange cycle
+void performMessageExchange() {
+  // Initialize communication with clock pulses
+  initCommunication();
+  
+  // Send message and receive response
+  bool success = sendMessage();
+  
+  if (success) {
+    Serial.println("Complete message exchange successful!");
+    // Flash LED to indicate success
+    for (int i = 0; i < 3; i++) {
+      digitalWrite(LED_BUILTIN, HIGH);
+      delay(50);
+      digitalWrite(LED_BUILTIN, LOW);
+      delay(50);
+    }
+  } else {
+    Serial.println("Message exchange failed");
+    // Longer LED flash to indicate failure
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(300);
+    digitalWrite(LED_BUILTIN, LOW);
+  }
+}
+
 // Main loop
 void loop() {
   unsigned long currentTime = millis();
   
-  // If we're waiting for a response, check for it
-  if (waiting_for_response) {
-    // Attempt to receive the response
-    bool received = receiveMessage();
-    waiting_for_response = false;
-    message_exchange_in_progress = false;
+  // If it's time to send a new message
+  if (currentTime - lastMessageTime >= messageSendInterval) {
+    Serial.println("\n\nStarting new message exchange cycle");
     
-    if (received) {
-      Serial.println("Message exchange completed successfully");
-    } else {
-      Serial.println("Failed to receive response");
-    }
+    performMessageExchange();
     
-    // Update the last message time to reset the interval
+    // Update the last message time
     lastMessageTime = currentTime;
-  }
-  // If no message exchange is in progress and it's time to send a new message
-  else if (!message_exchange_in_progress && (currentTime - lastMessageTime >= messageSendInterval)) {
-    Serial.println("\nTime to send a test message");
-    
-    // Initialize communication to get clean state
-    initCommunication();
-    
-    // Create and send test message
-    sprintf(tx_buffer, "ARD_MSG_%d", message_counter++);
-    
-    // Mark that we're starting a message exchange
-    message_exchange_in_progress = true;
-    
-    // Send the message
-    sendMessage(tx_buffer);
   }
   
   // Small delay
-  delay(5);
+  delay(10);
 }
