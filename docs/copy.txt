@@ -1,53 +1,70 @@
-TX: 0x4D
-TX: 0x53
-TX: 0x47
-TX: 0x5F
-TX: 0x31
-TX: 0x30
-Response sent
-Bidirectional exchange completed
+SYNC line HIGH detected
+SYNC verified stable
+SYNC detected, beginning bidirectional exchange
+Starting message reception
+RX: 0xA0
+Attempt 1: Invalid start byte: 0xA0
+RX: 0xA4
+Attempt 2: Invalid start byte: 0xA4
+RX: 0x15
+Attempt 3: Invalid start byte: 0x15
+RX: 0x24
+Attempt 4: Invalid start byte: 0x24
+RX: 0x45
+Attempt 5: Invalid start byte: 0x45
+Failed to find valid start byte
+Failed to receive message, no response sent
 
 SYNC line HIGH detected
 SYNC verified stable
 SYNC detected, beginning bidirectional exchange
 Starting message reception
-TIMEOUT waiting for CLOCK=0 after 50ms
-Failed waiting for clock LOW
-Error receiving bit 7
-Attempt 1: Invalid start byte: 0xFF
-RX: 0xAA
-Valid start byte detected
-RX: 0x0A
-Message length: 10 bytes
-RX: 0x41
+RX: 0x50
+Attempt 1: Invalid start byte: 0x50
 RX: 0x52
-RX: 0x44
-RX: 0x5F
-RX: 0x4D
-RX: 0x53
-RX: 0x47
-RX: 0x5F
-RX: 0x39
-RX: 0x38
-Message received: "ARD_MSG_98"
-Preparing to send response
-Response message: "DE1_MSG_11"
-Signaling response ready
-Arduino acknowledged, sending response
-TX: 0xAA
-TX: 0x0A
-TX: 0x44
-TX: 0x45
-TX: 0x31
-TX: 0x5F
-TX: 0x4D
-TX: 0x53
-TX: 0x47
-TX: 0x5F
-TX: 0x31
-TX: 0x31
-Response sent
-Bidirectional exchange completed
+Attempt 2: Invalid start byte: 0x52
+RX: 0x0A
+Attempt 3: Invalid start byte: 0x0A
+RX: 0x92
+Attempt 4: Invalid start byte: 0x92
+RX: 0x22
+Attempt 5: Invalid start byte: 0x22
+Failed to find valid start byte
+Failed to receive message, no response sent
+
+SYNC line HIGH detected
+SYNC verified stable
+SYNC detected, beginning bidirectional exchange
+Starting message reception
+RX: 0x50
+Attempt 1: Invalid start byte: 0x50
+RX: 0x52
+Attempt 2: Invalid start byte: 0x52
+RX: 0x0A
+Attempt 3: Invalid start byte: 0x0A
+RX: 0x92
+Attempt 4: Invalid start byte: 0x92
+RX: 0x22
+Attempt 5: Invalid start byte: 0x22
+Failed to find valid start byte
+Failed to receive message, no response sent
+
+SYNC line HIGH detected
+SYNC verified stable
+SYNC detected, beginning bidirectional exchange
+Starting message reception
+RX: 0x82
+Attempt 1: Invalid start byte: 0x82
+RX: 0x90
+Attempt 2: Invalid start byte: 0x90
+RX: 0x54
+Attempt 3: Invalid start byte: 0x54
+RX: 0x91
+Attempt 4: Invalid start byte: 0x91
+RX: 0x17
+Attempt 5: Invalid start byte: 0x17
+Failed to find valid start byte
+Failed to receive message, no response sent
 
 SYNC line HIGH detected
 SYNC verified stable
@@ -70,27 +87,10 @@ SYNC line HIGH detected
 SYNC verified stable
 SYNC detected, beginning bidirectional exchange
 Starting message reception
-RX: 0x82
-Attempt 1: Invalid start byte: 0x82
-RX: 0xD0
-Attempt 2: Invalid start byte: 0xD0
-RX: 0x54
-Attempt 3: Invalid start byte: 0x54
-RX: 0x91
-Attempt 4: Invalid start byte: 0x91
-RX: 0x17
-Attempt 5: Invalid start byte: 0x17
-Failed to find valid start byte
-Failed to receive message, no response sent
-
-SYNC line HIGH detected
-SYNC verified stable
-SYNC detected, beginning bidirectional exchange
-Starting message reception
 RX: 0x41
 Attempt 1: Invalid start byte: 0x41
-RX: 0x68
-Attempt 2: Invalid start byte: 0x68
+RX: 0x48
+Attempt 2: Invalid start byte: 0x48
 RX: 0x2A
 Attempt 3: Invalid start byte: 0x2A
 RX: 0x48
@@ -106,274 +106,8 @@ SYNC detected, beginning bidirectional exchange
 Starting message reception
 RX: 0xAA
 Valid start byte detected
-RX: 0x0B
-Message length: 11 bytes
-RX: 0x41
-RX: 0x52
-RX: 0x44
-RX: 0x5F
-RX: 0x4D
-RX: 0x53
-RX: 0x47
-RX: 0x5F
-RX: 0x31
-RX: 0x30
-RX: 0x32
-Message received: "ARD_MSG_102"
-Preparing to send response
-Response message: "DE1_MSG_12"
-Signaling response ready
-Arduino acknowledged, sending response
-TX: 0xAA
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TX: 0x0A
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TX: 0x44
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TX: 0x45
-TX: 0x31
-TX: 0x5F
-TX: 0x4D
-TX: 0x53
-TX: 0x47
-TX: 0x5F
-TX: 0x31
-TX: 0x32
-Response sent
-Bidirectional exchange completed
-
-SYNC line HIGH detected
-SYNC verified stable
-SYNC detected, beginning bidirectional exchange
-Starting message reception
-RX: 0xA0
-Attempt 1: Invalid start byte: 0xA0
-RX: 0xB4
-Attempt 2: Invalid start byte: 0xB4
-RX: 0x15
-Attempt 3: Invalid start byte: 0x15
-RX: 0x24
-Attempt 4: Invalid start byte: 0x24
-RX: 0x45
-Attempt 5: Invalid start byte: 0x45
-Failed to find valid start byte
-Failed to receive message, no response sent
-
-SYNC line HIGH detected
-SYNC verified stable
-SYNC detected, beginning bidirectional exchange
-Starting message reception
-RX: 0xA0
-Attempt 1: Invalid start byte: 0xA0
-RX: 0xB4
-Attempt 2: Invalid start byte: 0xB4
-RX: 0x15
-Attempt 3: Invalid start byte: 0x15
-RX: 0x24
-Attempt 4: Invalid start byte: 0x24
-RX: 0x45
-Attempt 5: Invalid start byte: 0x45
-Failed to find valid start byte
-Failed to receive message, no response sent
-
-SYNC line HIGH detected
-SYNC verified stable
-SYNC detected, beginning bidirectional exchange
-Starting message reception
-RX: 0xAA
-Valid start byte detected
-RX: 0x0B
-Message length: 11 bytes
-RX: 0x41
-RX: 0x52
-RX: 0x44
-RX: 0x5F
-RX: 0x4D
-RX: 0x53
-RX: 0x47
-RX: 0x5F
-RX: 0x31
-RX: 0x30
-RX: 0x36
-Message received: "ARD_MSG_106"
-Preparing to send response
-Response message: "DE1_MSG_13"
-Signaling response ready
-Arduino acknowledged, sending response
-TX: 0xAA
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TX: 0x0A
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TX: 0x44
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TX: 0x45
-TX: 0x31
-TX: 0x5F
-TX: 0x4D
-TX: 0x53
-TX: 0x47
-TX: 0x5F
-TX: 0x31
-TX: 0x33
-Response sent
-Bidirectional exchange completed
-
-SYNC line HIGH detected
-SYNC verified stable
-SYNC detected, beginning bidirectional exchange
-Starting message reception
-RX: 0xAA
-Valid start byte detected
-RX: 0x0B
-Message length: 11 bytes
-RX: 0x41
-RX: 0x52
-RX: 0x44
-RX: 0x5F
-RX: 0x4D
-RX: 0x53
-RX: 0x47
-RX: 0x5F
-RX: 0x31
-RX: 0x30
-RX: 0x38
-Message received: "ARD_MSG_108"
-Preparing to send response
-Response message: "DE1_MSG_14"
-Signaling response ready
-Arduino acknowledged, sending response
-TX: 0xAA
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TX: 0x0A
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TX: 0x44
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TIMEOUT waiting for CLOCK=0 after 50ms
-Send bit timeout waiting for clock LOW
-TX: 0x45
-TX: 0x31
-TX: 0x5F
-TX: 0x4D
-TX: 0x53
-TX: 0x47
-TX: 0x5F
-TX: 0x31
-TX: 0x34
-Response sent
-Bidirectional exchange completed
-
-SYNC line HIGH detected
-SYNC verified stable
-SYNC detected, beginning bidirectional exchange
-Starting message reception
-RX: 0x50
-Attempt 1: Invalid start byte: 0x50
-RX: 0x5A
-Attempt 2: Invalid start byte: 0x5A
 RX: 0x0A
-Attempt 3: Invalid start byte: 0x0A
-RX: 0x92
-Attempt 4: Invalid start byte: 0x92
-RX: 0x22
-Attempt 5: Invalid start byte: 0x22
-Failed to find valid start byte
-Failed to receive message, no response sent
-
-SYNC line HIGH detected
-SYNC verified stable
-SYNC detected, beginning bidirectional exchange
-Starting message reception
-RX: 0xAA
-Valid start byte detected
-RX: 0x0B
-Message length: 11 bytes
+Message length: 10 bytes
 RX: 0x41
 RX: 0x52
 RX: 0x44
@@ -382,12 +116,11 @@ RX: 0x4D
 RX: 0x53
 RX: 0x47
 RX: 0x5F
-RX: 0x31
-RX: 0x31
-RX: 0x31
-Message received: "ARD_MSG_111"
+RX: 0x34
+RX: 0x35
+Message received: "ARD_MSG_45"
 Preparing to send response
-Response message: "DE1_MSG_15"
+Response message: "DE1_MSG_28"
 Signaling response ready
 Arduino acknowledged, sending response
 TX: 0xAA
@@ -423,6 +156,14 @@ TIMEOUT waiting for CLOCK=0 after 50ms
 Send bit timeout waiting for clock LOW
 TIMEOUT waiting for CLOCK=0 after 50ms
 Send bit timeout waiting for clock LOW
+TIMEOUT waiting for CLOCK=0 after 50ms
+Send bit timeout waiting for clock LOW
+TIMEOUT waiting for CLOCK=0 after 50ms
+Send bit timeout waiting for clock LOW
+TIMEOUT waiting for CLOCK=0 after 50ms
+Send bit timeout waiting for clock LOW
+TIMEOUT waiting for CLOCK=0 after 50ms
+Send bit timeout waiting for clock LOW
 TX: 0x45
 TX: 0x31
 TX: 0x5F
@@ -430,7 +171,7 @@ TX: 0x4D
 TX: 0x53
 TX: 0x47
 TX: 0x5F
-TX: 0x31
-TX: 0x35
+TX: 0x32
+TX: 0x38
 Response sent
 Bidirectional exchange completed
