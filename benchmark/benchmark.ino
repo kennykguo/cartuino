@@ -10,7 +10,7 @@
 // Pin definitions
 #define CLOCK_PIN 3  // D3 for clock line
 #define DATA_PIN 2   // D2 for data line
-#define SYNC_PIN 5   // D5 for sync/handshake line
+#define SYNC_PIN 4   // D4 for sync/handshake line
 
 // Communication parameters
 #define BIT_PERIOD_MS 5     // Fast bit transfer (5ms per bit)
@@ -147,7 +147,11 @@ bool sendMessage(const char *message) {
   
   // First, assert the SYNC line to get DE1-SoC's attention
   digitalWrite(SYNC_PIN, HIGH);
-  delay(2); // Brief delay to ensure SYNC is detected
+  delay(50); // Longer delay to ensure DE1-SoC is ready to receive
+  
+  // Reset the clock line to ensure synchronization
+  digitalWrite(CLOCK_PIN, HIGH);
+  delay(20);
   
   // Send start byte
   sendByte(START_BYTE);
@@ -163,8 +167,14 @@ bool sendMessage(const char *message) {
   // Send end byte
   sendByte(END_BYTE);
   
+  // Keep SYNC high for a moment to ensure message completion
+  delay(20);
+  
   // Set SYNC line back to low
   digitalWrite(SYNC_PIN, LOW);
+  
+  // Give the DE1-SoC time to process before expecting a response
+  delay(50);
   
   // Wait for acknowledgment or response command
   unsigned char response = receiveByte();
