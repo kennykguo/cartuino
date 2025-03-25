@@ -1,47 +1,23 @@
-KEY0 pressed - Listening for Arduino message
-Waiting for message from Arduino...
-Clock timeout waiting for LOW
-Timeout waiting for clock LOW during bit receive
-Clock timeout waiting for LOW
-Timeout waiting for clock LOW during bit receive
-Received byte: 0x00
-Attempt 1: Invalid start byte: 0x00 (expected 0xAA)
-Received byte: 0x55
-Attempt 2: Invalid start byte: 0x55 (expected 0xAA)
-Received byte: 0x4A
-Attempt 3: Invalid start byte: 0x4A (expected 0xAA)
-Failed to detect valid start byte after 3 attempts
-Failed to detect start byte sequence
-Message reception failed
 
-KEY0 pressed - Listening for Arduino message
-Waiting for message from Arduino...
-Clock timeout waiting for LOW
-Timeout waiting for clock LOW during bit receive
-Clock timeout waiting for LOW
-Timeout waiting for clock LOW during bit receive
-Clock timeout waiting for LOW
-Timeout waiting for clock LOW during bit receive
-Clock timeout waiting for LOW
-Timeout waiting for clock LOW during bit receive
-Clock timeout waiting for LOW
-Timeout waiting for clock LOW during bit receive
-Clock timeout waiting for LOW
-Timeout waiting for clock LOW during bit receive
-Clock timeout waiting for LOW
-Timeout waiting for clock LOW during bit receive
-Clock timeout waiting for LOW
-Timeout waiting for clock LOW during bit receive
-Received byte: 0x00
-Attempt 1: Invalid start byte: 0x00 (expected 0xAA)
-Clock timeout waiting for LOW
-Timeout waiting for clock LOW during bit receive
-Received byte: 0x00
-Attempt 2: Invalid start byte: 0x00 (expected 0xAA)
+===================================
+DE1-SoC Asynchronous Communication
+===================================
+DE1-SoC Slave Communication Initialized
+Using D0 (data) and D1 (clock) from Arduino D2/D3   
+Running in asynchronous bidirectional mode
+JP1 direction register value: 0x00000000
+JP1 data register value: 0xFFBFFFFF
+Operating in automatic mode - no KEY press needed   
+KEY0 can still be used to manually trigger reception
+===================================
+
+
+Clock activity detected - preparing to receive message
+Receiving message from Arduino...
 Received byte: 0xAA
 Valid start byte detected (0xAA)
-Received byte: 0x09
-Expecting message of 9 bytes
+Received byte: 0x0A
+Expecting message of 10 bytes
 Received byte: 0x41
 Received byte: 0x52
 Received byte: 0x44
@@ -50,7 +26,379 @@ Received byte: 0x4D
 Received byte: 0x53
 Received byte: 0x47
 Received byte: 0x5F
-Received byte: 0x30
+Received byte: 0x33
+Received byte: 0x38
+Received byte: 0x0F
 Received byte: 0x55
-Message received successfully: "ARD_MSG_0"
-Message successfully received: ARD_MSG_0
+Message received successfully: "ARD_MSG_38"
+Preparing response: "DE1_MSG_0"
+Sending response: "DE1_MSG_0" (9 bytes)
+Sending byte: 0xAA
+Sending byte: 0x09
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit send
+Sending byte: 0x44
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit send
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit send
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit send
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit send
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit send
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit send
+Sending byte: 0x45
+Sending byte: 0x31
+Sending byte: 0x5F
+Sending byte: 0x4D
+Sending byte: 0x53
+Sending byte: 0x47
+Sending byte: 0x5F
+Sending byte: 0x30
+Sending byte: 0x50
+Sending byte: 0x55
+Received byte: 0x5F
+Did not receive ACK - got 0x5F instead
+Communication cycle completed successfully
+
+Clock activity detected - preparing to receive message
+Receiving message from Arduino...
+Received byte: 0x9C
+Attempt 1: Invalid start byte: 0x9C (expected 0xAA)
+Received byte: 0x95
+Attempt 2: Invalid start byte: 0x95 (expected 0xAA)
+Received byte: 0xFF
+Attempt 3: Invalid start byte: 0xFF (expected 0xAA)
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Received byte: 0xF8
+Attempt 4: Invalid start byte: 0xF8 (expected 0xAA)
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Received byte: 0x00
+Attempt 5: Invalid start byte: 0x00 (expected 0xAA)
+Failed to detect valid start byte after 5 attempts
+Communication cycle failed
+
+Clock activity detected - preparing to receive message
+Receiving message from Arduino...
+Received byte: 0x0A
+Attempt 1: Invalid start byte: 0x0A (expected 0xAA)
+Received byte: 0x48
+Attempt 2: Invalid start byte: 0x48 (expected 0xAA)
+Received byte: 0x24
+Attempt 3: Invalid start byte: 0x24 (expected 0xAA)
+Received byte: 0x2F
+Attempt 4: Invalid start byte: 0x2F (expected 0xAA)
+Received byte: 0x54
+Attempt 5: Invalid start byte: 0x54 (expected 0xAA)
+Failed to detect valid start byte after 5 attempts
+Communication cycle failed
+
+Clock activity detected - preparing to receive message
+Receiving message from Arduino...
+Received byte: 0xAF
+Attempt 1: Invalid start byte: 0xAF (expected 0xAA)
+Received byte: 0x30
+Attempt 2: Invalid start byte: 0x30 (expected 0xAA)
+Received byte: 0x00
+Attempt 3: Invalid start byte: 0x00 (expected 0xAA)
+Received byte: 0x7F
+Attempt 4: Invalid start byte: 0x7F (expected 0xAA)
+Received byte: 0xFF
+Attempt 5: Invalid start byte: 0xFF (expected 0xAA)
+Failed to detect valid start byte after 5 attempts
+Communication cycle failed
+
+Clock activity detected - preparing to receive message
+Receiving message from Arduino...
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Received byte: 0xF0
+Attempt 1: Invalid start byte: 0xF0 (expected 0xAA)
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Received byte: 0x00
+Attempt 2: Invalid start byte: 0x00 (expected 0xAA)
+Received byte: 0xAA
+Valid start byte detected (0xAA)
+Received byte: 0x0A
+Expecting message of 10 bytes
+Received byte: 0x41
+Received byte: 0x52
+Received byte: 0x44
+Received byte: 0x5F
+Received byte: 0x4D
+Received byte: 0x53
+Received byte: 0x47
+Received byte: 0x5F
+Received byte: 0x34
+Received byte: 0x31
+Received byte: 0x01
+Received byte: 0x55
+Message received successfully: "ARD_MSG_41"
+Preparing response: "DE1_MSG_1"
+Sending response: "DE1_MSG_1" (9 bytes)
+Sending byte: 0xAA
+Sending byte: 0x09
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit send
+Sending byte: 0x44
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit send
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit send
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit send
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit send
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit send
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit send
+Sending byte: 0x45
+Sending byte: 0x31
+Sending byte: 0x5F
+Sending byte: 0x4D
+Sending byte: 0x53
+Sending byte: 0x47
+Sending byte: 0x5F
+Sending byte: 0x31
+Sending byte: 0x51
+Sending byte: 0x55
+Received byte: 0x5F
+Did not receive ACK - got 0x5F instead
+Communication cycle completed successfully
+
+Clock activity detected - preparing to receive message
+Receiving message from Arduino...
+Received byte: 0x32
+Attempt 1: Invalid start byte: 0x32 (expected 0xAA)
+Received byte: 0x2A
+Attempt 2: Invalid start byte: 0x2A (expected 0xAA)
+Received byte: 0xFF
+Attempt 3: Invalid start byte: 0xFF (expected 0xAA)
+Received byte: 0xFF
+Attempt 4: Invalid start byte: 0xFF (expected 0xAA)
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Received byte: 0x00
+Attempt 5: Invalid start byte: 0x00 (expected 0xAA)
+Failed to detect valid start byte after 5 attempts
+Communication cycle failed
+
+Clock activity detected - preparing to receive message
+Receiving message from Arduino...
+Received byte: 0x0A
+Attempt 1: Invalid start byte: 0x0A (expected 0xAA)
+Received byte: 0x29
+Attempt 2: Invalid start byte: 0x29 (expected 0xAA)
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Received byte: 0x00
+Attempt 3: Invalid start byte: 0x00 (expected 0xAA)
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Received byte: 0x00
+Attempt 4: Invalid start byte: 0x00 (expected 0xAA)
+Received byte: 0x05
+Attempt 5: Invalid start byte: 0x05 (expected 0xAA)
+Failed to detect valid start byte after 5 attempts
+Communication cycle failed
+
+Clock activity detected - preparing to receive message
+Receiving message from Arduino...
+Received byte: 0x25
+Attempt 1: Invalid start byte: 0x25 (expected 0xAA)
+Received byte: 0x15
+Attempt 2: Invalid start byte: 0x15 (expected 0xAA)
+Received byte: 0x11
+Attempt 3: Invalid start byte: 0x11 (expected 0xAA)
+Received byte: 0x4D
+Attempt 4: Invalid start byte: 0x4D (expected 0xAA)
+Received byte: 0x47
+Attempt 5: Invalid start byte: 0x47 (expected 0xAA)
+Failed to detect valid start byte after 5 attempts
+Communication cycle failed
+
+Clock activity detected - preparing to receive message
+Receiving message from Arduino...
+Received byte: 0xE6
+Attempt 1: Invalid start byte: 0xE6 (expected 0xAA)
+Received byte: 0xDD
+Attempt 2: Invalid start byte: 0xDD (expected 0xAA)
+Received byte: 0xFF
+Attempt 3: Invalid start byte: 0xFF (expected 0xAA)
+Received byte: 0xFF
+Attempt 4: Invalid start byte: 0xFF (expected 0xAA)
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Received byte: 0x00
+Attempt 5: Invalid start byte: 0x00 (expected 0xAA)
+Failed to detect valid start byte after 5 attempts
+Communication cycle failed
+
+Clock activity detected - preparing to receive message
+Receiving message from Arduino...
+Received byte: 0x05
+Attempt 1: Invalid start byte: 0x05 (expected 0xAA)
+Received byte: 0x09
+Attempt 2: Invalid start byte: 0x09 (expected 0xAA)
+Received byte: 0xA9
+Attempt 3: Invalid start byte: 0xA9 (expected 0xAA)
+Received byte: 0x8B
+Attempt 4: Invalid start byte: 0x8B (expected 0xAA)
+Received byte: 0xD3
+Attempt 5: Invalid start byte: 0xD3 (expected 0xAA)
+Failed to detect valid start byte after 5 attempts
+Communication cycle failed
+
+Clock activity detected - preparing to receive message
+Receiving message from Arduino...
+Received byte: 0x34
+Attempt 1: Invalid start byte: 0x34 (expected 0xAA)
+Received byte: 0x7C
+Attempt 2: Invalid start byte: 0x7C (expected 0xAA)
+Received byte: 0x13
+Attempt 3: Invalid start byte: 0x13 (expected 0xAA)
+Received byte: 0x57
+Attempt 4: Invalid start byte: 0x57 (expected 0xAA)
+Received byte: 0xFF
+Attempt 5: Invalid start byte: 0xFF (expected 0xAA)
+Failed to detect valid start byte after 5 attempts
+Communication cycle failed
+
+Clock activity detected - preparing to receive message
+Receiving message from Arduino...
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Received byte: 0xE0
+Attempt 1: Invalid start byte: 0xE0 (expected 0xAA)
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Received byte: 0x00
+Attempt 2: Invalid start byte: 0x00 (expected 0xAA)
+Received byte: 0x15
+Attempt 3: Invalid start byte: 0x15 (expected 0xAA)
+Received byte: 0x28
+Attempt 4: Invalid start byte: 0x28 (expected 0xAA)
+Received byte: 0x24
+Attempt 5: Invalid start byte: 0x24 (expected 0xAA)
+Failed to detect valid start byte after 5 attempts
+Communication cycle failed
+
+Clock activity detected - preparing to receive message
+Receiving message from Arduino...
+Received byte: 0x17
+Attempt 1: Invalid start byte: 0x17 (expected 0xAA)
+Received byte: 0x6A
+Attempt 2: Invalid start byte: 0x6A (expected 0xAA)
+Received byte: 0x8E
+Attempt 3: Invalid start byte: 0x8E (expected 0xAA)
+Received byte: 0x32
+Attempt 4: Invalid start byte: 0x32 (expected 0xAA)
+Received byte: 0xAA
+Valid start byte detected (0xAA)
+Received byte: 0xBF
+Expecting message of 191 bytes
+Message too long: 191 bytes
+Communication cycle failed
+
+Clock activity detected - preparing to receive message
+Receiving message from Arduino...
+Received byte: 0xFF
+Attempt 1: Invalid start byte: 0xFF (expected 0xAA)
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Received byte: 0xFE
+Attempt 2: Invalid start byte: 0xFE (expected 0xAA)
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
+Timeout waiting for clock LOW during bit receive
+Clock timeout waiting for LOW
