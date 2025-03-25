@@ -9,7 +9,7 @@
 #define DATA_PIN 2   // D2 for data line - connects to DE1-SoC D0
 
 // Communication parameters
-#define BIT_PERIOD_MS 20    // 20ms per bit - very slow for reliability
+#define BIT_PERIOD_MS 40    // 40ms per bit - even slower for reliability
 #define MSG_BUFFER_SIZE 32  // Buffer size for messages
 char tx_buffer[MSG_BUFFER_SIZE];
 char rx_buffer[MSG_BUFFER_SIZE];
@@ -62,7 +62,7 @@ void setup() {
 void sendBit(int bit) {
   // First set data line
   digitalWrite(DATA_PIN, bit ? HIGH : LOW);
-  delay(5);  // Give time for line to stabilize
+  delay(10);  // Give time for line to stabilize
   
   // Clock low (signal bit is ready)
   digitalWrite(CLOCK_PIN, LOW);
@@ -103,13 +103,16 @@ void sendByte(unsigned char byte) {
   
   // Set as output before sending
   pinMode(DATA_PIN, OUTPUT);
-  delay(10);
+  delay(20);
   
   // Send each bit, MSB first
   for (int i = 7; i >= 0; i--) {
     int bit = (byte >> i) & 0x01;
     sendBit(bit);
   }
+  
+  // Small pause between bytes for receiver to catch up
+  delay(20);
 }
 
 // Receive a byte (8 bits) MSB first
@@ -177,20 +180,20 @@ void initCommunication() {
   // Reset to known state
   digitalWrite(CLOCK_PIN, HIGH);
   digitalWrite(DATA_PIN, LOW);
-  delay(100);
+  delay(200);
   
-  // Send initialization pattern (8 clock pulses with data low)
-  for (int i = 0; i < 8; i++) {
+  // Send attention sequence - 16 clock pulses with data low
+  for (int i = 0; i < 16; i++) {
     digitalWrite(CLOCK_PIN, LOW);
-    delay(50);
+    delay(60);
     digitalWrite(CLOCK_PIN, HIGH);
-    delay(50);
+    delay(60);
   }
   
-  // Another reset
+  // Another reset with longer delay
   digitalWrite(CLOCK_PIN, HIGH);
   digitalWrite(DATA_PIN, LOW);
-  delay(100);
+  delay(300);
   
   Serial.println("Initialization complete");
 }

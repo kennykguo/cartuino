@@ -28,7 +28,7 @@ unsigned long messageSendInterval = 10000;  // Send message every 10 seconds
 void setup() {
   // Setup USB serial for debugging output
   Serial.begin(9600);
-  
+   
   // Configure pins
   pinMode(CLOCK_PIN, OUTPUT);
   pinMode(DATA_PIN, OUTPUT);  // Start as output
