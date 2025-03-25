@@ -58,6 +58,7 @@
   "C_Cpp_Runner.msvcSecureNoWarnings": false,
   "files.associations": {
     "stdio.h": "c",
-    "address_map.h": "c"
+    "address_map.h": "c",
+    "string.h": "c"
   }
 }
