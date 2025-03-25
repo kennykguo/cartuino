@@ -31,7 +31,7 @@ void delay_ms(int ms) {
     volatile int i;
     for (i = 0; i < ms * (CLOCK_RATE / 100000); i++);
 }
-
+ 
 // Initialize the JP1 port for communication
 void init_jp1_communication() {
     // Set all pins as input initially
