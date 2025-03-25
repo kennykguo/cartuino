@@ -2,9 +2,9 @@
 #include <string.h>
 #include "address_map.h"
 
-// JP1 Pin definitions - using different pins from original
-#define DATA_PIN_BIT 0x00000001  // Bit 0 (D0) for data line
-#define CLOCK_PIN_BIT 0x00000002 // Bit 1 (D1) for clock line (from Arduino)
+// JP1 Pin definitions
+#define DATA_PIN_BIT 0x00000001  // Bit 0 (D0) for data line from Arduino D2
+#define CLOCK_PIN_BIT 0x00000002 // Bit 1 (D1) for clock line from Arduino D3
 #define CLOCK_RATE 100000000     // 100MHz DE1-SoC system clock
 
 // Global variables
@@ -13,12 +13,9 @@ volatile int *KEY_ptr;      // Pointer to pushbutton KEYs
 volatile int *LEDR_ptr;     // Pointer to red LEDs
 
 // Communication parameters
+#define BIT_PERIOD_MS 20    // 20ms per bit (matching Arduino)
 #define MSG_BUFFER_SIZE 32  // Buffer size for messages
-char tx_buffer[MSG_BUFFER_SIZE];
 char rx_buffer[MSG_BUFFER_SIZE];
-
-// Message counter
-int message_counter = 0;
 
 // Protocol constants
 #define START_BYTE 0xAA  // 10101010 pattern for synchronization
@@ -32,12 +29,11 @@ void delay_ms(int ms) {
 
 // Initialize the JP1 port for communication
 void init_jp1_communication() {
-    // Set DATA pin as input by default, CLOCK pin always as input (slave mode)
-    *(JP1_ptr + 1) = 0;  // All pins as input initially
+    // Set both pins as input initially (slave mode)
+    *(JP1_ptr + 1) = 0x00000000;
     
-    printf("JP1 communication initialized\n");
-    printf("DATA_PIN_BIT = 0x%08X (D2), CLOCK_PIN_BIT = 0x%08X (D3)\n", 
-           DATA_PIN_BIT, CLOCK_PIN_BIT);
+    printf("DE1-SoC Slave Communication Initialized\n");
+    printf("Using D0 (data) and D1 (clock) from Arduino D2/D3\n");
     printf("JP1 direction register value: 0x%08X\n", *(JP1_ptr + 1));
     printf("JP1 data register value: 0x%08X\n", *(JP1_ptr));
 }
@@ -53,7 +49,7 @@ void set_data_pin_direction(int is_output) {
     }
     
     // Small delay for pin state to stabilize
-    delay_ms(1);
+    delay_ms(5);
 }
 
 // Set the DATA pin value (when configured as output)
@@ -65,86 +61,61 @@ void set_data_pin(int high) {
     }
     
     // Small delay for value to stabilize
-    delay_ms(1);
+    delay_ms(5);
 }
 
-// Read the DATA pin value with multiple samples for stability
+// Read the DATA pin value
 int read_data_pin() {
-    // Read multiple times to ensure stable reading
-    int sample1 = (*(JP1_ptr) & DATA_PIN_BIT) ? 1 : 0;
-    delay_ms(1);
-    int sample2 = (*(JP1_ptr) & DATA_PIN_BIT) ? 1 : 0;
-    
-    // Return the majority value
-    return (sample1 == sample2) ? sample1 : (*(JP1_ptr) & DATA_PIN_BIT) ? 1 : 0;
+    return (*(JP1_ptr) & DATA_PIN_BIT) ? 1 : 0;
 }
 
-// Read the CLOCK pin value with multiple samples for stability
+// Read the CLOCK pin value
 int read_clock_pin() {
-    // Read multiple times to ensure stable reading
-    int sample1 = (*(JP1_ptr) & CLOCK_PIN_BIT) ? 1 : 0;
-    delay_ms(1);
-    int sample2 = (*(JP1_ptr) & CLOCK_PIN_BIT) ? 1 : 0;
-    
-    // Return the majority value
-    return (sample1 == sample2) ? sample1 : (*(JP1_ptr) & CLOCK_PIN_BIT) ? 1 : 0;
+    return (*(JP1_ptr) & CLOCK_PIN_BIT) ? 1 : 0;
 }
 
-// Receive a single bit by waiting for clock transitions with robust edge detection
+// Wait for clock edge with timeout protection
+int wait_for_clock_edge(int wait_for_high) {
+    int i;
+    const int MAX_WAIT = 1000000;  // Arbitrary timeout value
+    
+    // Wait for desired clock state
+    for (i = 0; i < MAX_WAIT; i++) {
+        int clock_state = read_clock_pin();
+        if ((wait_for_high && clock_state) || (!wait_for_high && !clock_state)) {
+            return 1;  // Success
+        }
+    }
+    
+    printf("Clock timeout waiting for %s\n", wait_for_high ? "HIGH" : "LOW");
+    return 0;  // Timeout
+}
+
+// Receive a single bit with explicit clock edge detection
 int receive_bit() {
     int bit;
-    int current_clock, prev_clock;
-    int timeout_counter = 0;
-    const int MAX_TIMEOUT = 1000000;  // Arbitrary large value for timeout
     
     // Make sure DATA pin is set as input
     set_data_pin_direction(0);
     
-    // Read initial clock state with a small delay for stability
-    delay_ms(1);
-    prev_clock = read_clock_pin();
-    
-    // Wait for clock to transition from HIGH to LOW
-    while (1) {
-        current_clock = read_clock_pin();
-        
-        if (prev_clock == 1 && current_clock == 0) {
-            // Clock transition detected, wait a small moment for data to stabilize
-            delay_ms(1);
-            
-            // Read the data bit
-            bit = read_data_pin();
-            break;
-        }
-        
-        prev_clock = current_clock;
-        
-        // Timeout prevention
-        timeout_counter++;
-        if (timeout_counter > MAX_TIMEOUT) {
-            printf("Timeout waiting for clock HIGH to LOW transition\n");
-            // Default to reading current data value on timeout
-            bit = read_data_pin();
-            break;
-        }
+    // Wait for clock to go LOW
+    if (!wait_for_clock_edge(0)) {
+        printf("Timeout waiting for clock LOW during bit receive\n");
+        return 0;  // Default to 0 on timeout
     }
     
-    // Reset timeout counter
-    timeout_counter = 0;
+    // Read data bit
+    bit = read_data_pin();
     
-    // Wait for clock to transition back from LOW to HIGH
-    while (read_clock_pin() == 0) {
-        timeout_counter++;
-        if (timeout_counter > MAX_TIMEOUT) {
-            printf("Timeout waiting for clock LOW to HIGH transition\n");
-            break;
-        }
+    // Wait for clock to go HIGH
+    if (!wait_for_clock_edge(1)) {
+        printf("Timeout waiting for clock HIGH during bit receive\n");
     }
     
     return bit;
 }
 
-// Receive a byte (8 bits) MSB first
+// Receive a byte (8 bits) MSB first with edge detection
 unsigned char receive_byte() {
     unsigned char byte = 0;
     
@@ -158,57 +129,28 @@ unsigned char receive_byte() {
     return byte;
 }
 
-// Send a single bit by monitoring clock transitions with timeout protection
-void send_bit(int bit) {
-    int timeout_counter = 0;
-    const int MAX_TIMEOUT = 1000000;  // Arbitrary large value for timeout
+// Wait for start byte with timeout
+int wait_for_start_byte(int max_attempts) {
+    unsigned char byte;
     
-    // Set data line to the desired bit value
-    set_data_pin_direction(1);  // Set as output
-    set_data_pin(bit);
-    
-    // Make sure the data is stable before clock edge
-    delay_ms(1);
-    
-    // Wait for clock to transition from HIGH to LOW
-    while (read_clock_pin() == 1) {
-        timeout_counter++;
-        if (timeout_counter > MAX_TIMEOUT) {
-            printf("Timeout waiting for clock HIGH to LOW transition during send\n");
-            break;
+    for (int i = 0; i < max_attempts; i++) {
+        byte = receive_byte();
+        if (byte == START_BYTE) {
+            printf("Valid start byte detected (0x%02X)\n", byte);
+            return 1;  // Start byte found
+        } else {
+            printf("Attempt %d: Invalid start byte: 0x%02X (expected 0x%02X)\n", 
+                   i+1, byte, START_BYTE);
         }
     }
     
-    // Reset timeout counter
-    timeout_counter = 0;
-    
-    // Wait for clock to transition back from LOW to HIGH
-    while (read_clock_pin() == 0) {
-        timeout_counter++;
-        if (timeout_counter > MAX_TIMEOUT) {
-            printf("Timeout waiting for clock LOW to HIGH transition during send\n");
-            break;
-        }
-    }
-    
-    // Hold the data bit stable for a moment after the clock edge
-    delay_ms(1);
+    printf("Failed to detect valid start byte after %d attempts\n", max_attempts);
+    return 0;  // Start byte not found
 }
 
-// Send a byte (8 bits) MSB first
-void send_byte(unsigned char byte) {
-    printf("Sending byte: 0x%02X\n", byte);
-    
-    // Send each bit, MSB first
-    for (int i = 7; i >= 0; i--) {
-        int bit = (byte >> i) & 0x01;
-        send_bit(bit);
-    }
-}
-
-// Receive a message with basic framing and improved robustness
-int receive_message() {
-    unsigned char byte, length, checksum = 0, calculated_checksum = 0;
+// Receive a simple message
+int receive_simple_message() {
+    unsigned char byte, length;
     int success = 0;
     
     // Turn on LED 0 during reception
@@ -216,39 +158,15 @@ int receive_message() {
     
     printf("Waiting for message from Arduino...\n");
     
-    // Clear the data pin direction first for clean start
-    set_data_pin_direction(0);
-    delay_ms(50);
-    
-    // Try multiple times to get a valid start byte
-    int retry_count = 0;
-    const int MAX_RETRIES = 5;
-    
-    while (retry_count < MAX_RETRIES) {
-        // Wait for start byte
-        byte = receive_byte();
-        if (byte == START_BYTE) {
-            printf("Valid start byte detected: 0x%02X\n", byte);
-            break;
-        } else {
-            printf("Invalid start byte on attempt %d: 0x%02X, expected 0x%02X\n", 
-                   retry_count + 1, byte, START_BYTE);
-            retry_count++;
-            
-            if (retry_count >= MAX_RETRIES) {
-                printf("Exceeded maximum retries for start byte\n");
-                *LEDR_ptr &= ~0x1;
-                return 0;
-            }
-            
-            // Small delay before next attempt
-            delay_ms(50);
-        }
+    // Try to detect start byte
+    if (!wait_for_start_byte(3)) {
+        printf("Failed to detect start byte sequence\n");
+        *LEDR_ptr &= ~0x1;
+        return 0;
     }
     
     // Receive length byte
     length = receive_byte();
-    calculated_checksum ^= length;
     
     printf("Expecting message of %d bytes\n", length);
     
@@ -264,24 +182,17 @@ int receive_message() {
     for (int i = 0; i < length; i++) {
         byte = receive_byte();
         rx_buffer[pos++] = byte;
-        calculated_checksum ^= byte;
     }
     
     // Null-terminate the string
     rx_buffer[pos] = '\0';
     
-    // Receive checksum
-    checksum = receive_byte();
-    
     // Receive end byte
     byte = receive_byte();
     
-    // Verify checksum and end byte
+    // Verify end byte
     if (byte != END_BYTE) {
-        printf("Invalid end byte: 0x%02X, expected 0x%02X\n", byte, END_BYTE);
-        success = 0;
-    } else if (checksum != calculated_checksum) {
-        printf("Checksum error: received 0x%02X, calculated 0x%02X\n", checksum, calculated_checksum);
+        printf("Invalid end byte: 0x%02X (expected 0x%02X)\n", byte, END_BYTE);
         success = 0;
     } else {
         printf("Message received successfully: \"%s\"\n", rx_buffer);
@@ -292,41 +203,6 @@ int receive_message() {
     *LEDR_ptr &= ~0x1;
     
     return success;
-}
-
-// Send a message with basic framing
-void send_message(char *message) {
-    int len = strlen(message);
-    unsigned char checksum = 0;
-    
-    // Turn on LED 1 during transmission
-    *LEDR_ptr |= 0x2;
-    
-    printf("Sending message: \"%s\" (%d bytes)\n", message, len);
-    
-    // Send start byte
-    send_byte(START_BYTE);
-    
-    // Send length byte
-    send_byte((unsigned char)len);
-    checksum ^= len;
-    
-    // Send each byte of the message
-    for (int i = 0; i < len; i++) {
-        send_byte((unsigned char)message[i]);
-        checksum ^= message[i];
-    }
-    
-    // Send checksum
-    send_byte(checksum);
-    
-    // Send end byte
-    send_byte(END_BYTE);
-    
-    // Turn off LED 1
-    *LEDR_ptr &= ~0x2;
-    
-    printf("Message sent successfully\n");
 }
 
 // Main function
@@ -349,30 +225,39 @@ int main(void) {
     // Initial LED state
     *LEDR_ptr = 0;
     
+    printf("Press KEY0 to attempt to receive a message\n");
+    printf("===================================\n\n");
+    
     // Main loop
     while (1) {
         // Read key value for edge detection
         key_value = *KEY_ptr;
         
-        // KEY0: Initiate message exchange on request
+        // KEY0: Initiate message reception on request
         if ((key_value & 0x1) && !(old_key_value & 0x1)) {
-            printf("\nKEY0 pressed - Waiting for Arduino message\n");
+            printf("\nKEY0 pressed - Listening for Arduino message\n");
             
-            // Wait to receive a message from Arduino
-            if (receive_message()) {
-                // Prepare response message
-                sprintf(tx_buffer, "DE1_MSG_%d", message_counter++);
+            // Ensure data pin is set as input
+            set_data_pin_direction(0);
+            
+            // Wait to receive a message
+            if (receive_simple_message()) {
+                printf("Message successfully received: %s\n", rx_buffer);
                 
-                // Important delay to allow Arduino to switch to receive mode
-                delay_ms(300);
+                // Turn on LED 1 to indicate success
+                *LEDR_ptr |= 0x2;
+                delay_ms(1000);
+                *LEDR_ptr &= ~0x2;
+            } else {
+                printf("Message reception failed\n");
                 
-                // Reset the data pin state explicitly
-                set_data_pin_direction(0);  // First set as input to reset
-                delay_ms(50);
-                set_data_pin_direction(1);  // Then set as output for sending
-                
-                // Send response message
-                send_message(tx_buffer);
+                // Flash LED 3 to indicate failure
+                for (int i = 0; i < 3; i++) {
+                    *LEDR_ptr |= 0x8;
+                    delay_ms(200);
+                    *LEDR_ptr &= ~0x8;
+                    delay_ms(200);
+                }
             }
         }
         
