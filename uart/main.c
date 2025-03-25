@@ -2,7 +2,7 @@
 #include <string.h>
 #include "address_map.h"
 
-// JP1 Pin definitions - verify these match your hardware
+// JP1 Pin definitions
 #define DATA_PIN_BIT 0x00000001  // Bit 0 (D0) for data from Arduino D2
 #define CLOCK_PIN_BIT 0x00000002 // Bit 1 (D1) for clock from Arduino D3
 #define SYNC_PIN_BIT 0x00000004  // Bit 2 (D2) for sync from Arduino D5
@@ -13,15 +13,18 @@ volatile int *JP1_ptr;      // Pointer to JP1 expansion port
 volatile int *KEY_ptr;      // Pointer to pushbutton KEYs
 volatile int *LEDR_ptr;     // Pointer to red LEDs
 
-// Buffer for received messages
-#define MSG_BUFFER_SIZE 32
+// Communication parameters
+#define BIT_PERIOD_MS 10    // Bit transfer rate (10ms per bit)
+#define MSG_BUFFER_SIZE 32  // Buffer size for messages
 char rx_buffer[MSG_BUFFER_SIZE];
+char tx_buffer[MSG_BUFFER_SIZE];
+int message_counter = 0;
 
 // Protocol constants
 #define START_BYTE 0xAA  // 10101010 pattern for synchronization
 
 // Debug flags
-#define DEBUG_PIN_VALUES 1 // Set to 1 to print pin values continuously
+#define DEBUG_PIN_VALUES 0 // Set to 1 to print pin values continuously
 
 // Simple delay in milliseconds
 void delay_ms(int ms) {
@@ -34,7 +37,7 @@ void init_jp1_communication() {
     // Set all pins as input initially
     *(JP1_ptr + 1) = 0x00000000;
     
-    printf("DE1-SoC Simplified Receiver Initialized\n");
+    printf("DE1-SoC Bidirectional Communication Initialized\n");
     printf("Using D0(data), D1(clock), D2(sync) from Arduino\n");
     printf("JP1 direction register: 0x%08X, data register: 0x%08X\n", 
            *(JP1_ptr + 1), *(JP1_ptr));
@@ -51,6 +54,25 @@ int read_clock_pin() {
 
 int read_sync_pin() {
     return (*(JP1_ptr) & SYNC_PIN_BIT) ? 1 : 0;
+}
+
+// Set data pin direction and value
+void set_data_pin_direction(int is_output) {
+    if (is_output) {
+        *(JP1_ptr + 1) |= DATA_PIN_BIT;
+    } else {
+        *(JP1_ptr + 1) &= ~DATA_PIN_BIT;
+    }
+    delay_ms(1); // Allow time for change to take effect
+}
+
+void set_data_pin(int high) {
+    if (high) {
+        *(JP1_ptr) |= DATA_PIN_BIT;
+    } else {
+        *(JP1_ptr) &= ~DATA_PIN_BIT;
+    }
+    delay_ms(1); // Allow time for change to take effect
 }
 
 // Print the current state of all pins (for debugging)
@@ -78,6 +100,9 @@ int wait_for_clock_state(int desired_state, int timeout_ms) {
 int receive_bit() {
     int bit;
     
+    // Make sure DATA pin is set as input
+    set_data_pin_direction(0);
+    
     // Wait for clock HIGH (initial state)
     if (!wait_for_clock_state(1, 50)) {
         printf("Failed waiting for clock HIGH\n");
@@ -99,6 +124,24 @@ int receive_bit() {
     return bit;
 }
 
+// Send a single bit
+void send_bit(int bit) {
+    // Set DATA pin as output with the bit value
+    set_data_pin_direction(1);
+    set_data_pin(bit);
+    
+    // Wait for clock to go LOW
+    if (!wait_for_clock_state(0, 50)) {
+        printf("Send bit timeout waiting for clock LOW\n");
+        return;
+    }
+    
+    // Keep data value stable while clock is LOW
+    
+    // Wait for clock to return HIGH
+    wait_for_clock_state(1, 50);
+}
+
 // Receive a byte (8 bits) MSB first
 unsigned char receive_byte() {
     unsigned char byte = 0;
@@ -116,6 +159,17 @@ unsigned char receive_byte() {
     
     printf("RX: 0x%02X\n", byte);
     return byte;
+}
+
+// Send a byte (8 bits) MSB first
+void send_byte(unsigned char byte) {
+    printf("TX: 0x%02X\n", byte);
+    
+    // Send each bit, MSB first
+    for (int i = 7; i >= 0; i--) {
+        int bit = (byte >> i) & 0x01;
+        send_bit(bit);
+    }
 }
 
 // Wait for and verify the start byte
@@ -160,10 +214,10 @@ int check_for_sync() {
     return 0;
 }
 
-// Receive a message when SYNC is detected
-void receive_message() {
+// Receive a message and prepare to send response
+int receive_message() {
     unsigned char byte, length;
-    int i;
+    int i, success = 0;
     
     // Turn on LED 0 during reception
     *LEDR_ptr |= 0x1;
@@ -177,7 +231,7 @@ void receive_message() {
         *LEDR_ptr |= 0x8;  // Turn on error LED
         delay_ms(1);
         *LEDR_ptr &= ~0x8; // Turn off error LED
-        return;
+        return 0;
     }
     
     // Receive length byte
@@ -191,7 +245,7 @@ void receive_message() {
         *LEDR_ptr |= 0x8;
         delay_ms(1);
         *LEDR_ptr &= ~0x8;
-        return;
+        return 0;
     }
     
     // Receive message bytes
@@ -208,6 +262,52 @@ void receive_message() {
     *LEDR_ptr |= 0x2;   // Turn on success LED
     delay_ms(1);
     *LEDR_ptr &= ~0x2;  // Turn off success LED
+    
+    success = 1;
+    return success;
+}
+
+// Send response message back to Arduino
+void send_response() {
+    // Turn on LED 4 during response transmission
+    *LEDR_ptr |= 0x10;
+    
+    printf("Preparing to send response\n");
+    
+    // Create response message
+    sprintf(tx_buffer, "DE1_MSG_%d", message_counter++);
+    int len = strlen(tx_buffer);
+    
+    printf("Response message: \"%s\"\n", tx_buffer);
+    
+    // Signal Arduino we have a response by pulling DATA high
+    // while SYNC is still high from Arduino
+    set_data_pin_direction(1);
+    set_data_pin(1);  // Pull DATA high
+    
+    printf("Signaling response ready\n");
+    
+    // Wait for Arduino to acknowledge with clock toggle
+    wait_for_clock_state(0, 500);  // Wait for clock to go LOW
+    wait_for_clock_state(1, 500);  // Wait for clock to go HIGH
+    
+    printf("Arduino acknowledged, sending response\n");
+    
+    // Send start byte
+    send_byte(START_BYTE);
+    
+    // Send length byte
+    send_byte((unsigned char)len);
+    
+    // Send each byte of the message
+    for (int i = 0; i < len; i++) {
+        send_byte((unsigned char)tx_buffer[i]);
+    }
+    
+    printf("Response sent\n");
+    
+    // Turn off LED 4
+    *LEDR_ptr &= ~0x10;
 }
 
 // Main function
@@ -218,7 +318,7 @@ int main(void) {
     LEDR_ptr = (int *)LEDR_BASE;
     
     printf("\n\n===================================\n");
-    printf("DE1-SoC Simplified Receiver\n");
+    printf("DE1-SoC Bidirectional Communication\n");
     printf("===================================\n");
     
     // Initialize JP1 for communication
@@ -234,9 +334,21 @@ int main(void) {
     while (1) {
         // Check for SYNC line activity
         if (check_for_sync()) {
+            printf("SYNC detected, beginning bidirectional exchange\n");
+            
             // SYNC detected, receive message
-            delay_ms(1); // Allow time for Arduino to prepare for transmission
-            receive_message();
+            delay_ms(50); // Allow time for Arduino to prepare
+            if (receive_message()) {
+                // If message received successfully, send response
+                delay_ms(100); // Brief pause before response
+                send_response();
+                printf("Bidirectional exchange completed\n");
+            } else {
+                printf("Failed to receive message, no response sent\n");
+            }
+            
+            // Ensure data pin is back to input mode
+            set_data_pin_direction(0);
         }
         
         // Optional: periodically print pin states for debugging
