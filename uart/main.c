@@ -2,10 +2,10 @@
 #include <string.h>
 #include "address_map.h"
 
-// JP1 Pin definitions
-#define DATA_PIN_BIT 0x00000001  // Bit 0 (D0) for data line from Arduino D2
-#define CLOCK_PIN_BIT 0x00000002 // Bit 1 (D1) for clock line from Arduino D3
-#define SYNC_PIN_BIT 0x00000004  // Bit 2 (D2) for sync line from Arduino D4
+// JP1 Pin definitions - verify these match your hardware
+#define DATA_PIN_BIT 0x00000001  // Bit 0 (D0) for data from Arduino D2
+#define CLOCK_PIN_BIT 0x00000002 // Bit 1 (D1) for clock from Arduino D3
+#define SYNC_PIN_BIT 0x00000004  // Bit 2 (D2) for sync from Arduino D5
 #define CLOCK_RATE 100000000     // 100MHz DE1-SoC system clock
 
 // Global variables
@@ -13,23 +13,15 @@ volatile int *JP1_ptr;      // Pointer to JP1 expansion port
 volatile int *KEY_ptr;      // Pointer to pushbutton KEYs
 volatile int *LEDR_ptr;     // Pointer to red LEDs
 
-// Communication parameters
-#define BIT_PERIOD_MS 5     // Fast bit transfer (5ms per bit)
-#define MSG_BUFFER_SIZE 32  // Buffer size for messages
-char tx_buffer[MSG_BUFFER_SIZE];
+// Buffer for received messages
+#define MSG_BUFFER_SIZE 32
 char rx_buffer[MSG_BUFFER_SIZE];
-
-// Message counter and state tracking
-int message_counter = 0;
-int sync_detected = 0;
-int prev_sync_state = 0;
 
 // Protocol constants
 #define START_BYTE 0xAA  // 10101010 pattern for synchronization
-#define END_BYTE 0x55    // 01010101 pattern for end of message
-#define CMD_ACK 0xCC     // Acknowledge receipt
-#define CMD_NACK 0x33    // Negative acknowledge
-#define CMD_RESPONSE 0xF0 // Response follows
+
+// Debug flags
+#define DEBUG_PIN_VALUES 1 // Set to 1 to print pin values continuously
 
 // Simple delay in milliseconds
 void delay_ms(int ms) {
@@ -37,149 +29,88 @@ void delay_ms(int ms) {
     for (i = 0; i < ms * (CLOCK_RATE / 10000); i++);
 }
 
-// Even shorter delay in microseconds
-void delay_us(int us) {
-    volatile int i;
-    for (i = 0; i < us * (CLOCK_RATE / 10000000); i++);
-}
-
 // Initialize the JP1 port for communication
 void init_jp1_communication() {
-    // Start with all pins as input
+    // Set all pins as input initially
     *(JP1_ptr + 1) = 0x00000000;
     
-    printf("DE1-SoC Bidirectional Communication Initialized\n");
+    printf("DE1-SoC Simplified Receiver Initialized\n");
     printf("Using D0(data), D1(clock), D2(sync) from Arduino\n");
-    printf("JP1 direction register value: 0x%08X\n", *(JP1_ptr + 1));
-    printf("JP1 data register value: 0x%08X\n", *(JP1_ptr));
+    printf("JP1 direction register: 0x%08X, data register: 0x%08X\n", 
+           *(JP1_ptr + 1), *(JP1_ptr));
 }
 
-// Set the direction of the DATA pin (input or output)
-void set_data_pin_direction(int is_output) {
-    if (is_output) {
-        // Set DATA pin as output
-        *(JP1_ptr + 1) |= DATA_PIN_BIT;
-    } else {
-        // Set DATA pin as input
-        *(JP1_ptr + 1) &= ~DATA_PIN_BIT;
-    }
-    
-    // Brief delay for pin state to stabilize
-    delay_us(100);
-}
-
-// Set the DATA pin value (when configured as output)
-void set_data_pin(int high) {
-    if (high) {
-        *(JP1_ptr) |= DATA_PIN_BIT;
-    } else {
-        *(JP1_ptr) &= ~DATA_PIN_BIT;
-    }
-    
-    // Brief delay for value to stabilize
-    delay_us(100);
-}
-
-// Read the DATA pin value
+// Read pin values
 int read_data_pin() {
     return (*(JP1_ptr) & DATA_PIN_BIT) ? 1 : 0;
 }
 
-// Read the CLOCK pin value
 int read_clock_pin() {
     return (*(JP1_ptr) & CLOCK_PIN_BIT) ? 1 : 0;
 }
 
-// Read the SYNC pin value
 int read_sync_pin() {
     return (*(JP1_ptr) & SYNC_PIN_BIT) ? 1 : 0;
 }
 
-// Check for SYNC line rising edge
-int detect_sync_edge() {
-    int current_sync = read_sync_pin();
-    int edge_detected = 0;
-    
-    if (!prev_sync_state && current_sync) {
-        edge_detected = 1;
-        // Wait until SYNC is stable
-        int stable_count = 0;
-        while (stable_count < 5) {
-            delay_ms(1);
-            if (read_sync_pin())
-                stable_count++;
-            else
-                stable_count = 0;
-        }
-    }
-    
-    prev_sync_state = current_sync;
-    return edge_detected;
+// Print the current state of all pins (for debugging)
+void print_pin_states() {
+    printf("Pins: DATA=%d, CLOCK=%d, SYNC=%d\n", 
+           read_data_pin(), read_clock_pin(), read_sync_pin());
 }
 
-// Wait for clock to be in specified state with timeout
-int wait_for_clock_state(int wait_for_high, int timeout_us) {
+// Wait for clock transition with debug
+int wait_for_clock_state(int desired_state, int timeout_ms) {
     int i;
-    const int SAMPLES_PER_US = CLOCK_RATE / 10000000;
-    const int MAX_SAMPLES = timeout_us * SAMPLES_PER_US;
-    
-    for (i = 0; i < MAX_SAMPLES; i++) {
+    for (i = 0; i < timeout_ms * 100; i++) {
         int clock_state = read_clock_pin();
-        if ((wait_for_high && clock_state) || (!wait_for_high && !clock_state)) {
-            return 1;  // Success - clock is in desired state
+        if ((desired_state && clock_state) || (!desired_state && !clock_state)) {
+            return 1; // Success
         }
+        delay_ms(1); // Check every 1ms
     }
     
-    printf("Clock timeout waiting for %s (after %d us)\n", 
-           wait_for_high ? "HIGH" : "LOW", timeout_us);
-    return 0;  // Timeout
+    printf("TIMEOUT waiting for CLOCK=%d after %dms\n", desired_state, timeout_ms);
+    return 0; // Timeout
 }
 
-// Receive a single bit 
+// Receive a single bit
 int receive_bit() {
     int bit;
     
-    // Make sure DATA pin is set as input
-    set_data_pin_direction(0);
-    
-    // Wait for clock to go LOW (max 10ms)
-    if (!wait_for_clock_state(0, 10000)) {
-        return 0;  // Default to 0 on timeout
+    // Wait for clock HIGH (initial state)
+    if (!wait_for_clock_state(1, 50)) {
+        printf("Failed waiting for clock HIGH\n");
+        return -1; // Error
     }
     
-    // Read data bit
+    // Wait for clock LOW (active edge)
+    if (!wait_for_clock_state(0, 50)) {
+        printf("Failed waiting for clock LOW\n");
+        return -1; // Error
+    }
+    
+    // Read the data bit while clock is LOW
     bit = read_data_pin();
     
-    // Wait for clock to go HIGH (max 10ms)
-    wait_for_clock_state(1, 10000);
+    // Wait for clock to return HIGH
+    wait_for_clock_state(1, 50); // Ignoring result here to continue
     
     return bit;
-}
-
-// Send a bit
-void send_bit(int bit) {
-    // Set data pin as output and set value
-    set_data_pin_direction(1);
-    set_data_pin(bit);
-    
-    // Wait for clock to go LOW
-    if (!wait_for_clock_state(0, 10000)) {
-        return;
-    }
-    
-    // Keep data stable while clock is LOW
-    
-    // Wait for clock to go HIGH
-    wait_for_clock_state(1, 10000);
 }
 
 // Receive a byte (8 bits) MSB first
 unsigned char receive_byte() {
     unsigned char byte = 0;
+    int bit;
     
     // Receive 8 bits, MSB first
     for (int i = 7; i >= 0; i--) {
-        int bit = receive_bit();
+        bit = receive_bit();
+        if (bit < 0) {
+            printf("Error receiving bit %d\n", i);
+            return 0xFF; // Error value
+        }
         byte |= (bit << i);
     }
     
@@ -187,168 +118,96 @@ unsigned char receive_byte() {
     return byte;
 }
 
-// Send a byte (8 bits) MSB first
-void send_byte(unsigned char byte) {
-    printf("TX: 0x%02X\n", byte);
-    
-    // Send each bit, MSB first
-    for (int i = 7; i >= 0; i--) {
-        int bit = (byte >> i) & 0x01;
-        send_bit(bit);
+// Wait for and verify the start byte
+int wait_for_start_byte() {
+    unsigned char byte;
+    for (int attempt = 0; attempt < 5; attempt++) {
+        byte = receive_byte();
+        if (byte == START_BYTE) {
+            printf("Valid start byte detected\n");
+            return 1;
+        }
+        printf("Attempt %d: Invalid start byte: 0x%02X\n", attempt+1, byte);
+        delay_ms(10);
     }
+    return 0;
 }
 
-// Receive a message from the Arduino
-int receive_message(int send_response) {
+// Monitor the SYNC line for activity
+int check_for_sync() {
+    static int prev_sync = 0;
+    int current_sync = read_sync_pin();
+    
+    // Check for LOW to HIGH transition
+    if (!prev_sync && current_sync) {
+        printf("\nSYNC line HIGH detected\n");
+        prev_sync = current_sync;
+        
+        // Verify sync is stable for at least 10ms
+        for (int i = 0; i < 10; i++) {
+            if (!read_sync_pin()) {
+                printf("SYNC not stable\n");
+                return 0;
+            }
+            delay_ms(1);
+        }
+        
+        printf("SYNC verified stable\n");
+        return 1;
+    }
+    
+    prev_sync = current_sync;
+    return 0;
+}
+
+// Receive a message when SYNC is detected
+void receive_message() {
     unsigned char byte, length;
-    int success = 0;
-    int retries = 0;
+    int i;
     
     // Turn on LED 0 during reception
     *LEDR_ptr |= 0x1;
     
-    printf("Preparing to receive message...\n");
+    printf("Starting message reception\n");
     
-    // Make sure data pin is in input mode
-    set_data_pin_direction(0);
-    
-    // Pause for synchronization
-    delay_ms(30);
-    
-    printf("Receiving message...\n");
-    
-    // Try to detect start byte with retries
-    while (retries < 3) {
-        byte = receive_byte();
-    if (byte != START_BYTE) {
-        printf("Invalid start byte: 0x%02X (expected 0x%02X) - retry %d\n", byte, START_BYTE, retries+1);
-        retries++;
-        // Short delay before retry
-        delay_ms(10);
-    } else {
-        break; // Found valid start byte
-    }
-    }
-    
-    // Check if we found a valid start byte
-    if (retries >= 3) {
-        printf("Failed to find valid start byte after retries\n");
-        *LEDR_ptr &= ~0x1;
-        return 0;
+    // Wait for start byte
+    if (!wait_for_start_byte()) {
+        printf("Failed to find valid start byte\n");
+        *LEDR_ptr &= ~0x1; // Turn off LED 0
+        *LEDR_ptr |= 0x8;  // Turn on error LED
+        delay_ms(500);
+        *LEDR_ptr &= ~0x8; // Turn off error LED
+        return;
     }
     
     // Receive length byte
     length = receive_byte();
+    printf("Message length: %d bytes\n", length);
     
-    printf("Expecting %d bytes\n", length);
-    
-    // Ensure length is reasonable
-    if (length >= MSG_BUFFER_SIZE || length == 0) {
-        printf("Invalid message length: %d bytes\n", length);
+    // Validate length
+    if (length == 0 || length >= MSG_BUFFER_SIZE) {
+        printf("Invalid message length: %d\n", length);
         *LEDR_ptr &= ~0x1;
-        
-        // Send NACK
-        send_byte(CMD_NACK);
-        return 0;
+        *LEDR_ptr |= 0x8;
+        delay_ms(500);
+        *LEDR_ptr &= ~0x8;
+        return;
     }
     
     // Receive message bytes
-    int pos = 0;
-    for (int i = 0; i < length; i++) {
+    for (i = 0; i < length; i++) {
         byte = receive_byte();
-        rx_buffer[pos++] = byte;
+        rx_buffer[i] = (char)byte;
     }
+    rx_buffer[i] = '\0'; // Null-terminate
     
-    // Null-terminate the string
-    rx_buffer[pos] = '\0';
+    printf("Message received: \"%s\"\n", rx_buffer);
     
-    // Receive end byte
-    byte = receive_byte();
-    
-    if (byte != END_BYTE) {
-        printf("Invalid end byte: 0x%02X (expected 0x%02X)\n", byte, END_BYTE);
-        success = 0;
-        
-        // Send NACK
-        send_byte(CMD_NACK);
-    } else {
-        printf("Message received: \"%s\"\n", rx_buffer);
-        success = 1;
-        
-        // Send response command or ACK
-        if (send_response) {
-            send_byte(CMD_RESPONSE);
-        } else {
-            send_byte(CMD_ACK);
-        }
-    }
-    
-    // Turn off LED 0
-    *LEDR_ptr &= ~0x1;
-    
-    return success;
-}
-
-// Send a response message
-void send_response() {
-    // Turn on LED 1 during transmission
-    *LEDR_ptr |= 0x2;
-    
-    // Prepare response message
-    sprintf(tx_buffer, "DE1_MSG_%d", message_counter++);
-    int len = strlen(tx_buffer);
-    
-    printf("Sending response: \"%s\"\n", tx_buffer);
-    
-    // Send start byte
-    send_byte(START_BYTE);
-    
-    // Send length byte
-    send_byte((unsigned char)len);
-    
-    // Send each byte of the message
-    for (int i = 0; i < len; i++) {
-        send_byte((unsigned char)tx_buffer[i]);
-    }
-    
-    // Send end byte
-    send_byte(END_BYTE);
-    
-    // Wait for ACK
-    unsigned char response = receive_byte();
-    
-    if (response == CMD_ACK) {
-        printf("Received ACK - response successfully delivered\n");
-    } else {
-        printf("Did not receive ACK - got 0x%02X instead\n", response);
-    }
-    
-    // Turn off LED 1
-    *LEDR_ptr &= ~0x2;
-}
-
-// Check for SYNC line to detect incoming communication
-void check_for_sync() {
-    // Monitor SYNC line for rising edge
-    if (detect_sync_edge()) {
-        printf("\nSync detected - preparing to receive message\n");
-        sync_detected = 1;
-    }
-    
-    // If SYNC detected, receive message and optionally send response
-    if (sync_detected) {
-        // Reset flag
-        sync_detected = 0;
-        
-        // Process message with automatic response
-        if (receive_message(1)) {
-            // Send response message
-            send_response();
-            printf("Bidirectional exchange completed\n");
-        } else {
-            printf("Failed to receive message\n");
-        }
-    }
+    // Success indicator
+    *LEDR_ptr &= ~0x1;  // Turn off LED 0
+    *LEDR_ptr |= 0x2;   // Turn on success LED
+    delay_ms(500);
+    *LEDR_ptr &= ~0x2;  // Turn off success LED
 }
 
 // Main function
@@ -359,67 +218,37 @@ int main(void) {
     LEDR_ptr = (int *)LEDR_BASE;
     
     printf("\n\n===================================\n");
-    printf("DE1-SoC Fast Bidirectional Communication\n");
+    printf("DE1-SoC Simplified Receiver\n");
     printf("===================================\n");
     
     // Initialize JP1 for communication
     init_jp1_communication();
     
-    // Main loop variables
-    int key_value, old_key_value = 0;
-    
     // Initial LED state
     *LEDR_ptr = 0;
     
-    printf("Running in automatic handshake mode\n");
-    printf("KEY0 can still be used to manually send a message\n");
+    printf("Monitoring SYNC line for activity\n");
     printf("===================================\n\n");
     
     // Main loop
     while (1) {
-        // Read key value for edge detection
-        key_value = *KEY_ptr;
-        
-        // Continuously check for SYNC signal
-        check_for_sync();
-        
-        // KEY0: Manually initiate message transmission
-        if ((key_value & 0x1) && !(old_key_value & 0x1)) {
-            printf("\nKEY0 pressed - Sending message\n");
-            
-            // Send a test message
-            sprintf(tx_buffer, "DE1_MSG_%d", message_counter++);
-            int len = strlen(tx_buffer);
-            
-            // Turn on LED 2 during transmission
-            *LEDR_ptr |= 0x4;
-            
-            printf("Sending message: \"%s\"\n", tx_buffer);
-            
-            // Send start byte
-            send_byte(START_BYTE);
-            
-            // Send length byte
-            send_byte((unsigned char)len);
-            
-            // Send each byte of the message
-            for (int i = 0; i < len; i++) {
-                send_byte((unsigned char)tx_buffer[i]);
-            }
-            
-            // Send end byte
-            send_byte(END_BYTE);
-            
-            // Turn off LED 2
-            *LEDR_ptr &= ~0x4;
-            
-            printf("Message sent\n");
+        // Check for SYNC line activity
+        if (check_for_sync()) {
+            // SYNC detected, receive message
+            delay_ms(50); // Allow time for Arduino to prepare for transmission
+            receive_message();
         }
         
-        // Update old key value for edge detection
-        old_key_value = key_value;
+        // Optional: periodically print pin states for debugging
+        if (DEBUG_PIN_VALUES) {
+            static int counter = 0;
+            if (++counter >= 500) { // Every ~500ms
+                print_pin_states();
+                counter = 0;
+            }
+        }
         
-        // Small delay to prevent CPU hogging
+        // Small delay
         delay_ms(1);
     }
     

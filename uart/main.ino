@@ -10,7 +10,7 @@
 // Pin definitions
 #define CLOCK_PIN 3  // D3 for clock line
 #define DATA_PIN 2   // D2 for data line
-#define SYNC_PIN 4   // D4 for sync/handshake line
+#define SYNC_PIN 5   // D5 for sync/handshake line
 
 // Communication parameters
 #define BIT_PERIOD_MS 5     // Fast bit transfer (5ms per bit)
