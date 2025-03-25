@@ -26,7 +26,7 @@ char rx_buffer[MSG_BUFFER_SIZE];
 // Simple delay in milliseconds
 void delay_ms(int ms) {
     volatile int i;
-    for (i = 0; i < ms * (CLOCK_RATE / 10000); i++);
+    for (i = 0; i < ms * (CLOCK_RATE / 100000); i++);
 }
 
 // Initialize the JP1 port for communication
@@ -128,7 +128,7 @@ int wait_for_start_byte() {
             return 1;
         }
         printf("Attempt %d: Invalid start byte: 0x%02X\n", attempt+1, byte);
-        delay_ms(10);
+        delay_ms(1);
     }
     return 0;
 }
@@ -175,7 +175,7 @@ void receive_message() {
         printf("Failed to find valid start byte\n");
         *LEDR_ptr &= ~0x1; // Turn off LED 0
         *LEDR_ptr |= 0x8;  // Turn on error LED
-        delay_ms(500);
+        delay_ms(1);
         *LEDR_ptr &= ~0x8; // Turn off error LED
         return;
     }
@@ -189,7 +189,7 @@ void receive_message() {
         printf("Invalid message length: %d\n", length);
         *LEDR_ptr &= ~0x1;
         *LEDR_ptr |= 0x8;
-        delay_ms(500);
+        delay_ms(1);
         *LEDR_ptr &= ~0x8;
         return;
     }
@@ -206,7 +206,7 @@ void receive_message() {
     // Success indicator
     *LEDR_ptr &= ~0x1;  // Turn off LED 0
     *LEDR_ptr |= 0x2;   // Turn on success LED
-    delay_ms(500);
+    delay_ms(1);
     *LEDR_ptr &= ~0x2;  // Turn off success LED
 }
 
@@ -235,7 +235,7 @@ int main(void) {
         // Check for SYNC line activity
         if (check_for_sync()) {
             // SYNC detected, receive message
-            delay_ms(50); // Allow time for Arduino to prepare for transmission
+            delay_ms(1); // Allow time for Arduino to prepare for transmission
             receive_message();
         }
         
