@@ -15,6 +15,13 @@
 #define BIT_PERIOD_MS 1     // Fast bit transfer (1ms per bit)
 #define SETUP_DELAY_US 100  // Setup time in microseconds
 #define RESPONSE_WAIT_MS 200 // Time to wait for response
+#define MSG_BUFFER_SIZE 32  // Buffer size for messages
+#define START_BYTE 0xAA     // 10101010 pattern for sync
+
+// Message buffers and counter
+char tx_buffer[MSG_BUFFER_SIZE];
+char rx_buffer[MSG_BUFFER_SIZE];
+int message_counter = 0;
 
 void setup() {
   Serial.begin(19200);
