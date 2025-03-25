@@ -1,129 +1,166 @@
 /*
- * Arduino Fast Bidirectional Communication Protocol (Master)
- * For communication with DE1-SoC FPGA
- * Uses 3-wire handshake protocol:
- * - D2 for data line - connects to DE1-SoC D0
- * - D3 for clock line - connects to DE1-SoC D1
- * - D4 for sync line - connects to DE1-SoC D2
+ * Arduino Bidirectional Communication Protocol (Master)
+ * Uses handshake synchronization for reliable operation
+ * D2 = Data, D3 = Clock, D4 = Ready/Request (new handshake line)
  */
 
 // Pin definitions
-#define CLOCK_PIN 3  // D3 for clock line
-#define DATA_PIN 2   // D2 for data line
-#define SYNC_PIN 4   // D4 for sync/handshake line
+#define DATA_PIN 2    // D2 connects to DE1-SoC D0
+#define CLOCK_PIN 3   // D3 connects to DE1-SoC D1
+#define READY_PIN 4   // D4 connects to DE1-SoC D2 (new handshake line)
 
 // Communication parameters
-#define BIT_PERIOD_MS 5     // Fast bit transfer (5ms per bit)
-#define MSG_BUFFER_SIZE 32  // Buffer size for messages
+#define BIT_PERIOD 5        // 5ms per bit - faster than before
+#define MSG_BUFFER_SIZE 32  // Buffer size for messages (20 chars + protocol bytes)
 char tx_buffer[MSG_BUFFER_SIZE];
 char rx_buffer[MSG_BUFFER_SIZE];
 
-// Message counter and timing
-int message_counter = 0;
-unsigned long lastMessageTime = 0;
-unsigned long messageSendInterval = 3000;  // Send message every 3 seconds
-
 // Protocol constants
-#define START_BYTE 0xAA  // 10101010 pattern for synchronization
-#define END_BYTE 0x55    // 01010101 pattern for end of message
-#define CMD_ACK 0xCC     // Acknowledge receipt
-#define CMD_NACK 0x33    // Negative acknowledge
-#define CMD_RESPONSE 0xF0 // Response follows
+#define START_BYTE 0xAA  // 10101010 pattern
+#define END_BYTE 0x55    // 01010101 pattern
+#define ACK_BYTE 0xCC    // 11001100 pattern
 
-// State variables
-bool awaitingResponse = false;
+// State tracking
+int message_counter = 0;
+bool waiting_for_response = false;
+unsigned long last_activity_time = 0;
+unsigned long message_interval = 5000;  // Auto-send every 5 seconds
 
 void setup() {
-  // Setup USB serial for debugging output
-  Serial.begin(115200);  // Faster serial for debugging
+  // Setup serial for debugging
+  Serial.begin(9600);
   
   // Configure pins
+  pinMode(DATA_PIN, OUTPUT);
   pinMode(CLOCK_PIN, OUTPUT);
-  pinMode(DATA_PIN, INPUT);  // Start as input
-  pinMode(SYNC_PIN, OUTPUT);
+  pinMode(READY_PIN, OUTPUT);
   
   // Initialize pins to known states
-  digitalWrite(CLOCK_PIN, HIGH);  // Idle state is HIGH
-  digitalWrite(SYNC_PIN, LOW);    // Idle state is LOW
+  digitalWrite(CLOCK_PIN, HIGH);
+  digitalWrite(DATA_PIN, LOW);
+  digitalWrite(READY_PIN, LOW); // Default: not requesting attention
   
-  // Configure built-in LED
+  // Configure LED
   pinMode(LED_BUILTIN, OUTPUT);
   
-  // Initial LED flash to show we're ready
-  for (int i = 0; i < 2; i++) {
+  // Ready indicator
+  for (int i = 0; i < 3; i++) {
     digitalWrite(LED_BUILTIN, HIGH);
     delay(50);
     digitalWrite(LED_BUILTIN, LOW);
     delay(50);
   }
   
-  Serial.println("Arduino Fast Bidirectional Protocol Ready");
-  Serial.println("Using D2(data), D3(clock), D4(sync) to DE1-SoC");
+  Serial.println("\n===== Arduino Master Communication Protocol =====");
+  Serial.println("Using D2 (data), D3 (clock), D4 (ready/request)");
+  Serial.println("Automatic bidirectional communication enabled");
+  Serial.println("==============================================");
 }
 
-// Send a single bit with fast timing
+// Assert READY signal to request attention from FPGA
+bool requestAttention(unsigned long timeout_ms = 500) {
+  unsigned long start_time = millis();
+  
+  // Signal that we want to initiate communication
+  digitalWrite(READY_PIN, HIGH);
+  
+  // Wait until DE1-SoC acknowledges by pulling READY line LOW
+  // (DE1-SoC will set its D2 as INPUT, which allows pullup to work)
+  while (digitalRead(READY_PIN) == HIGH) {
+    if (millis() - start_time > timeout_ms) {
+      // Timeout expired
+      digitalWrite(READY_PIN, LOW); // Reset signal
+      Serial.println("Timeout waiting for FPGA to acknowledge ready signal");
+      return false;
+    }
+    delay(1);
+  }
+  
+  // DE1-SoC has acknowledged
+  return true;
+}
+
+// Detect if DE1-SoC is requesting our attention
+bool fpgaRequestingAttention() {
+  // If READY line is LOW (pulled down by DE1-SoC), it wants to send data
+  return digitalRead(READY_PIN) == LOW;
+}
+
+// Acknowledge DE1-SoC's request by setting READY as INPUT
+void acknowledgeRequest() {
+  pinMode(READY_PIN, INPUT_PULLUP);
+  delay(1); // Small delay for stability
+}
+
+// Reset READY line to normal state after communication
+void resetReadyLine() {
+  pinMode(READY_PIN, OUTPUT);
+  digitalWrite(READY_PIN, LOW);
+  delay(1);
+}
+
+// Send a single bit
 void sendBit(int bit) {
-  // Set data line to the bit value
-  pinMode(DATA_PIN, OUTPUT);
   digitalWrite(DATA_PIN, bit ? HIGH : LOW);
-  delayMicroseconds(200);  // Short setup time
   
-  // Clock LOW to indicate bit is ready
+  // Brief delay for data to stabilize
+  delayMicroseconds(200);
+  
+  // Clock cycle
   digitalWrite(CLOCK_PIN, LOW);
-  delayMicroseconds(BIT_PERIOD_MS * 500);  // Half period in us
+  delayMicroseconds(BIT_PERIOD * 500); // Half period
   
-  // Clock HIGH to complete bit transmission
   digitalWrite(CLOCK_PIN, HIGH);
-  delayMicroseconds(BIT_PERIOD_MS * 500);  // Half period in us
-}
-
-// Receive a single bit
-int receiveBit() {
-  int bit;
-  
-  // Set data pin as input
-  pinMode(DATA_PIN, INPUT);
-  delayMicroseconds(200);  // Short setup time
-  
-  // Clock LOW to signal ready to read
-  digitalWrite(CLOCK_PIN, LOW);
-  delayMicroseconds(BIT_PERIOD_MS * 500);  // Half period in us
-  
-  // Read the bit at the middle of the clock pulse
-  bit = digitalRead(DATA_PIN);
-  
-  // Clock HIGH to complete the bit read
-  digitalWrite(CLOCK_PIN, HIGH);
-  delayMicroseconds(BIT_PERIOD_MS * 500);  // Half period in us
-  
-  return bit;
+  delayMicroseconds(BIT_PERIOD * 500); // Half period
 }
 
 // Send a byte (8 bits) MSB first
 void sendByte(unsigned char byte) {
-  // Debug output
   Serial.print("TX: 0x");
   if (byte < 16) Serial.print("0");
   Serial.println(byte, HEX);
   
-  // Send each bit, MSB first
   for (int i = 7; i >= 0; i--) {
     int bit = (byte >> i) & 0x01;
     sendBit(bit);
   }
 }
 
+// Receive a bit by waiting for clock transitions
+int receiveBit() {
+  int bit;
+  
+  // Set data pin as input
+  pinMode(DATA_PIN, INPUT);
+  
+  // Wait for clock to go LOW
+  while (digitalRead(CLOCK_PIN) != LOW) {
+    delayMicroseconds(100);
+  }
+  
+  // Brief delay for data to stabilize
+  delayMicroseconds(100);
+  
+  // Read data bit
+  bit = digitalRead(DATA_PIN);
+  
+  // Wait for clock to go HIGH
+  while (digitalRead(CLOCK_PIN) != HIGH) {
+    delayMicroseconds(100);
+  }
+  
+  return bit;
+}
+
 // Receive a byte (8 bits) MSB first
 unsigned char receiveByte() {
   unsigned char byte = 0;
   
-  // Receive 8 bits, MSB first
   for (int i = 7; i >= 0; i--) {
     int bit = receiveBit();
     byte |= (bit << i);
   }
   
-  // Debug output
   Serial.print("RX: 0x");
   if (byte < 16) Serial.print("0");
   Serial.println(byte, HEX);
@@ -131,140 +168,164 @@ unsigned char receiveByte() {
   return byte;
 }
 
-// Send a message to the DE1-SoC
-bool sendMessage(const char *message) {
+// Send a complete message
+bool sendMessage(char *message) {
   int len = strlen(message);
-  if (len > MSG_BUFFER_SIZE - 1) {
-    len = MSG_BUFFER_SIZE - 1;
-  }
+  unsigned char checksum = 0;
   
-  // Turn on LED during transmission
-  digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(LED_BUILTIN, HIGH); // Indicate transmission
   
   Serial.print("Sending: \"");
   Serial.print(message);
   Serial.println("\"");
   
-  // First, assert the SYNC line to get DE1-SoC's attention
-  digitalWrite(SYNC_PIN, HIGH);
-  delay(2); // Brief delay to ensure SYNC is detected
+  // Request attention from DE1-SoC
+  if (!requestAttention(500)) {
+    digitalWrite(LED_BUILTIN, LOW);
+    return false;
+  }
+  
+  // Switch DATA pin to output mode
+  pinMode(DATA_PIN, OUTPUT);
   
   // Send start byte
   sendByte(START_BYTE);
   
   // Send length byte
   sendByte((unsigned char)len);
+  checksum ^= len;
   
-  // Send each byte of the message
+  // Send message bytes
   for (int i = 0; i < len; i++) {
     sendByte((unsigned char)message[i]);
+    checksum ^= message[i];
   }
+  
+  // Send checksum
+  sendByte(checksum);
   
   // Send end byte
   sendByte(END_BYTE);
   
-  // Set SYNC line back to low
-  digitalWrite(SYNC_PIN, LOW);
-  
-  // Wait for acknowledgment or response command
+  // Wait for ACK from DE1-SoC
+  pinMode(DATA_PIN, INPUT);
   unsigned char response = receiveByte();
   
-  // Turn off LED
-  digitalWrite(LED_BUILTIN, LOW);
+  // Reset ready line
+  resetReadyLine();
   
-  if (response == CMD_ACK) {
-    Serial.println("Received ACK");
-    return true;
-  } 
-  else if (response == CMD_RESPONSE) {
-    Serial.println("Response follows");
-    awaitingResponse = true;
-    return true;
-  }
-  else {
-    Serial.println("Invalid response");
-    return false;
-  }
+  digitalWrite(LED_BUILTIN, LOW); // End transmission indication
+  
+  return (response == ACK_BYTE);
 }
 
-// Receive a response message
-bool receiveResponse() {
-  unsigned char byte, length;
+// Receive a complete message from DE1-SoC
+bool receiveMessage() {
+  unsigned char byte, length, checksum = 0, calculated_checksum = 0;
+  bool success = false;
   
-  // Turn on LED during reception
-  digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(LED_BUILTIN, HIGH); // Indicate reception
   
-  Serial.println("Receiving response...");
+  Serial.println("DE1-SoC wants to send data...");
   
-  // Look for start byte
+  // Acknowledge the request
+  acknowledgeRequest();
+  
+  // Switch to input mode
+  pinMode(DATA_PIN, INPUT);
+  
+  // Check for start byte
   byte = receiveByte();
   if (byte != START_BYTE) {
-    Serial.println("Invalid start byte");
+    Serial.println("Invalid start byte!");
+    resetReadyLine();
     digitalWrite(LED_BUILTIN, LOW);
     return false;
   }
   
-  // Get length
+  // Get length byte
   length = receiveByte();
-  if (length >= MSG_BUFFER_SIZE) {
-    Serial.println("Message too long");
+  calculated_checksum ^= length;
+  
+  // Validate length
+  if (length >= MSG_BUFFER_SIZE || length == 0) {
+    Serial.println("Invalid message length!");
+    resetReadyLine();
     digitalWrite(LED_BUILTIN, LOW);
     return false;
   }
   
-  // Receive message bytes
+  // Get message bytes
+  int pos = 0;
   for (int i = 0; i < length; i++) {
-    rx_buffer[i] = receiveByte();
+    byte = receiveByte();
+    rx_buffer[pos++] = byte;
+    calculated_checksum ^= byte;
   }
-  rx_buffer[length] = '\0';
   
-  // Receive end byte
+  // Null-terminate
+  rx_buffer[pos] = '\0';
+  
+  // Get checksum
+  checksum = receiveByte();
+  
+  // Get end byte
   byte = receiveByte();
   
-  // Turn off LED
-  digitalWrite(LED_BUILTIN, LOW);
-  
+  // Verify message
   if (byte != END_BYTE) {
-    Serial.println("Invalid end byte");
-    return false;
+    Serial.println("Invalid end byte!");
+    success = false;
+  } else if (checksum != calculated_checksum) {
+    Serial.println("Checksum error!");
+    success = false;
+  } else {
+    Serial.print("Received: \"");
+    Serial.print(rx_buffer);
+    Serial.println("\"");
+    success = true;
   }
   
-  Serial.print("Response received: \"");
-  Serial.print(rx_buffer);
-  Serial.println("\"");
-  
   // Send ACK
-  sendByte(CMD_ACK);
+  pinMode(DATA_PIN, OUTPUT);
+  sendByte(success ? ACK_BYTE : 0x33); // ACK or NACK
   
-  return true;
+  // Reset ready line
+  resetReadyLine();
+  
+  digitalWrite(LED_BUILTIN, LOW); // End reception indication
+  
+  return success;
 }
 
-// Main loop
 void loop() {
-  unsigned long currentTime = millis();
+  unsigned long current_time = millis();
   
-  // If it's time to send a new message
-  if (currentTime - lastMessageTime >= messageSendInterval) {
+  // Check if DE1-SoC is requesting to send us data
+  if (fpgaRequestingAttention()) {
+    if (receiveMessage()) {
+      Serial.println("Message received successfully");
+    } else {
+      Serial.println("Message reception failed");
+    }
+    last_activity_time = current_time;
+  }
+  
+  // Periodically send test messages
+  if (current_time - last_activity_time >= message_interval) {
     // Create test message
     sprintf(tx_buffer, "ARD_MSG_%d", message_counter++);
     
-    // Send the message
+    // Send it
     if (sendMessage(tx_buffer)) {
-      // If response is expected, receive it
-      if (awaitingResponse) {
-        if (receiveResponse()) {
-          Serial.println("Bidirectional exchange completed");
-        } else {
-          Serial.println("Failed to receive response");
-        }
-        awaitingResponse = false;
-      }
+      Serial.println("Message sent successfully");
+    } else {
+      Serial.println("Message transmission failed");
     }
     
-    // Update timing
-    lastMessageTime = currentTime;
+    last_activity_time = current_time;
   }
   
-  // Small delay - keep it minimal
+  // Small delay to prevent CPU hogging
   delay(1);
 }
