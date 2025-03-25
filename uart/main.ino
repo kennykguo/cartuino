@@ -9,7 +9,7 @@
 #define DATA_PIN 0  // D0 for data line
 
 // Communication parameters
-#define BIT_PERIOD_MS 2     // 2ms per bit (500 bps) - must match DE1-SoC
+#define BIT_PERIOD_MS 5     // 5ms per bit (200 bps) - must match DE1-SoC
 #define MSG_BUFFER_SIZE 64  // Buffer size for messages
 char tx_buffer[MSG_BUFFER_SIZE];
 char rx_buffer[MSG_BUFFER_SIZE];
@@ -40,8 +40,13 @@ void setup() {
   // Setup USB serial for debugging output
   Serial.begin(9600);
   
-  // Configure DATA pin
-  pinMode(DATA_PIN, INPUT); // Default to input mode
+  // Configure DATA pin - start as output to set a known state
+  pinMode(DATA_PIN, OUTPUT);
+  digitalWrite(DATA_PIN, HIGH);  // Idle state is HIGH
+  delay(100);  // Hold for stability
+  
+  // Now set to input for receiving
+  pinMode(DATA_PIN, INPUT);
   
   // Configure built-in LED
   pinMode(LED_BUILTIN, OUTPUT);
@@ -67,6 +72,14 @@ void setup() {
   Serial.println("- Button on pin 2: Send test message to DE1-SoC");
   Serial.println("- Will automatically receive messages from DE1-SoC");
   Serial.println("==============================================");
+  
+  // Reset line state with a break condition
+  Serial.println("Sending line reset sequence...");
+  pinMode(DATA_PIN, OUTPUT);
+  digitalWrite(DATA_PIN, HIGH);
+  delay(50);
+  pinMode(DATA_PIN, INPUT);
+  delay(50);
 }
 
 // Set the DATA pin direction
@@ -100,8 +113,14 @@ void sendByte(unsigned char byte) {
   if (byte < 16) Serial.print("0");
   Serial.println(byte, HEX);
   
+  // Ensure line is in idle state (HIGH) before starting
+  setDataPin(1);
+  delay(BIT_PERIOD_MS * 2);
+  
   // Send start bit (always 0)
-  sendBit(0);
+  // Hold it longer to ensure it's detected
+  setDataPin(0);
+  delay(BIT_PERIOD_MS * 1.5);
   
   // Send 8 data bits, LSB first
   for (int i = 0; i < 8; i++) {
@@ -109,11 +128,9 @@ void sendByte(unsigned char byte) {
     sendBit(bit);
   }
   
-  // Send stop bit (always 1)
-  sendBit(1);
-  
-  // Add extra idle time between bytes for stability
-  delay(BIT_PERIOD_MS);
+  // Send stop bit (always 1) - hold longer for reliability
+  setDataPin(1);
+  delay(BIT_PERIOD_MS * 2);
 }
 
 // Receive a byte (8 bits) LSB first, with start and stop bits
@@ -122,57 +139,77 @@ unsigned char receiveByte() {
   unsigned char byte = 0;
   int bit;
   unsigned long startTime;
+  int consecutive_zeros = 0;
   
   // Set DATA pin as input
   setDataPinMode(INPUT);
   
-  // Wait for start bit (logic 0)
+  // Wait for a stable line first (should be HIGH in idle)
   startTime = millis();
-  while (readDataPin() == 1) {
+  while (1) {
+    if (readDataPin() == 1) {
+      break;  // Line is stable HIGH, ready to detect start bit
+    }
+    
+    if (millis() - startTime > 100) {  // 100ms timeout for line to become stable
+      // Try to reset line if it's stuck LOW
+      setDataPinMode(OUTPUT);
+      setDataPin(1);            // Force HIGH
+      delay(20);
+      setDataPinMode(INPUT);    // Back to input
+      
+      startTime = millis();
+      consecutive_zeros = 0;
+    }
+  }
+  
+  // Wait for valid start bit (logic 0)
+  startTime = millis();
+  while (1) {
+    if (readDataPin() == 0) {
+      consecutive_zeros++;
+      if (consecutive_zeros >= 3) {  // Require multiple consecutive zeros to confirm start bit
+        break;  // Confirmed start bit
+      }
+    } else {
+      consecutive_zeros = 0;  // Reset if we see a HIGH
+    }
+    
     if (millis() - startTime > MAX_WAIT_TIME_MS) {
       Serial.println("Timeout waiting for start bit");
       return 0xFF; // Indicate error
     }
+    delay(1);  // Check every 1ms
   }
   
-  // Start bit detected, wait for half bit period to sample in the middle
-  delay(BIT_PERIOD_MS / 2);
+  // Start bit confirmed - skip to middle of the start bit
+  // We've already consumed ~3ms detecting it, so adjust timing
+  delay(BIT_PERIOD_MS / 2 - 3);
   
-  // Verify it's still a valid start bit
-  if (readDataPin() != 0) {
-    Serial.println("Invalid start bit");
-    return 0xFF; // Indicate error
-  }
-  
-  // Wait for remainder of the start bit
-  delay(BIT_PERIOD_MS / 2);
-  
-  // Read 8 data bits
+  // Read 8 data bits, sampling in the middle of each bit period
+  byte = 0;
   for (int i = 0; i < 8; i++) {
-    // Wait for half bit period to sample in the middle
-    delay(BIT_PERIOD_MS / 2);
+    // Wait for full bit period to get to middle of next bit
+    delay(BIT_PERIOD_MS);
     
-    // Read bit
+    // Sample the bit
     bit = readDataPin();
     if (bit) {
       byte |= (1 << i);
     }
-    
-    // Wait for remainder of bit period
-    delay(BIT_PERIOD_MS / 2);
   }
   
-  // Wait for half bit period to check stop bit in the middle
-  delay(BIT_PERIOD_MS / 2);
+  // Wait for stop bit (should be HIGH)
+  delay(BIT_PERIOD_MS);
   
-  // Check for valid stop bit (logic 1)
+  // Check for valid stop bit
   if (readDataPin() != 1) {
     Serial.println("Invalid stop bit");
-    return 0xFF; // Indicate error
+    // Continue anyway - we already have the byte
   }
   
-  // Wait for remainder of stop bit
-  delay(BIT_PERIOD_MS / 2);
+  // Additional delay to ensure we're past the stop bit
+  delay(BIT_PERIOD_MS);
   
   Serial.print("Received byte: 0x");
   if (byte < 16) Serial.print("0");
@@ -360,24 +397,78 @@ int receiveMessage() {
   return success;
 }
 
-// Check if start bit detected (for polling)
+// Check if potential start bit detected (for polling)
 bool startBitDetected() {
+  static int prev_state = 1;  // Keep track of previous state
+  static int low_count = 0;   // Count consecutive low readings
+  static unsigned long last_check = 0;
+  int current_state;
+  
+  // Only check every 1ms to avoid excessive polling
+  if (millis() - last_check < 1) {
+    return false;
+  }
+  last_check = millis();
+  
   setDataPinMode(INPUT);
-  return (readDataPin() == 0);
+  current_state = readDataPin();
+  
+  // If line went from HIGH to LOW
+  if (prev_state == 1 && current_state == 0) {
+    low_count = 1;
+    prev_state = current_state;
+    return false;  // Not confirmed yet
+  }
+  
+  // If line stays LOW, increment counter
+  if (prev_state == 0 && current_state == 0) {
+    low_count++;
+    // If we see enough consecutive LOWs, it's likely a real start bit
+    if (low_count >= 3) {
+      low_count = 0;
+      // Don't reset prev_state to maintain edge detection
+      return true;  // Confirmed start bit
+    }
+  }
+  
+  // Update previous state
+  prev_state = current_state;
+  
+  // If line went back to HIGH, reset counter
+  if (current_state == 1) {
+    low_count = 0;
+  }
+  
+  return false;  // No confirmed start bit
 }
 
 void loop() {
   // Check for incoming message from DE1-SoC
   if (startBitDetected()) {
-    if (receiveMessage()) {
-      Serial.print("Received message from DE1-SoC: ");
-      Serial.println(rx_buffer);
+    Serial.println("Potential start bit detected!");
+    
+    // Delay just a bit to confirm
+    delay(2);
+    
+    if (readDataPin() == 0) {
+      Serial.println("Start bit confirmed, receiving message...");
       
-      // Auto-respond with an acknowledgment message
-      sprintf(tx_buffer, "ARD_ACK_%d", message_counter++);
-      delay(100); // Small delay before responding
-      sendMessage(tx_buffer);
+      if (receiveMessage()) {
+        Serial.print("Received message from DE1-SoC: ");
+        Serial.println(rx_buffer);
+        
+        // Auto-respond with an acknowledgment message
+        sprintf(tx_buffer, "ARD_ACK_%d", message_counter++);
+        delay(200); // Longer delay before responding
+        sendMessage(tx_buffer);
+        
+        // After sending, return to input mode to listen
+        setDataPinMode(INPUT);
+      }
+    } else {
+      Serial.println("False start bit detection");
     }
+    
     lastActivityTime = millis();
   }
   
@@ -394,23 +485,47 @@ void loop() {
     if (reading == LOW && lastButtonState == HIGH) {
       Serial.println("\nButton pressed - Sending test message");
       
+      // Reset line state first
+      Serial.println("Resetting line state...");
+      setDataPinMode(OUTPUT);
+      setDataPin(1);  // Idle HIGH
+      delay(100);     // Hold for stability
+      
       // Create test message
       sprintf(tx_buffer, "ARD_MSG_%d", message_counter++);
       
       // Send it
       sendMessage(tx_buffer);
+      
+      // After sending, return to input mode
+      setDataPinMode(INPUT);
+      
       lastActivityTime = millis();
     }
   }
   
   lastButtonState = reading;
   
-  // If it's been 5 seconds since last activity, print a heartbeat message
+  // If it's been 5 seconds since last activity, print diagnostic info
   if (millis() - lastActivityTime > 5000) {
-    Serial.println("Waiting for activity...");
+    // Read and print current line state
+    setDataPinMode(INPUT);
+    int lineState = readDataPin();
+    Serial.print("Waiting for activity... Line state: ");
+    Serial.println(lineState);
+    
+    // If line appears stuck LOW, try to reset it
+    if (lineState == 0) {
+      Serial.println("Line appears stuck LOW, attempting reset...");
+      setDataPinMode(OUTPUT);
+      setDataPin(1);  // Force HIGH
+      delay(50);
+      setDataPinMode(INPUT);
+    }
+    
     lastActivityTime = millis();
   }
   
   // Small delay for debounce and to prevent CPU hogging
-  delay(10);
+  delay(5);
 }

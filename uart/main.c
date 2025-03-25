@@ -17,7 +17,7 @@ volatile int *LEDR_ptr;     // Pointer to red LEDs
 volatile int *TIMER_ptr;    // Pointer to interval timer
 
 // Communication parameters
-#define BIT_PERIOD_MS 2     // 2ms per bit (500 bps) - slow but reliable
+#define BIT_PERIOD_MS 5     // 5ms per bit (200 bps) - very slow but extremely reliable
 #define MSG_BUFFER_SIZE 64  // Buffer size for messages
 char tx_buffer[MSG_BUFFER_SIZE];
 char rx_buffer[MSG_BUFFER_SIZE];
@@ -43,16 +43,30 @@ void delay_ms(int ms) {
 
 // Initialize the JP1 port for communication
 void init_jp1_communication() {
-    // Set DATA pin as input by default
-    *(JP1_ptr + 1) &= ~DATA_PIN_BIT;  // Direction register
+    // Set DATA pin as output initially to ensure a known state
+    *(JP1_ptr + 1) |= DATA_PIN_BIT;  // Direction register - output
     
-    // Add delay for stability
-    delay_ms(10);
+    // Set DATA pin HIGH (idle state for serial)
+    *(JP1_ptr) |= DATA_PIN_BIT;
+    
+    // Hold for a moment to ensure line is stable
+    delay_ms(100);
+    
+    // Now set to input for receiving
+    *(JP1_ptr + 1) &= ~DATA_PIN_BIT;
     
     printf("JP1 communication initialized\n");
     printf("DATA_PIN_BIT = 0x%08X (D0)\n", DATA_PIN_BIT);
     printf("JP1 direction register value: 0x%08X\n", *(JP1_ptr + 1));
     printf("JP1 data register value: 0x%08X\n", *(JP1_ptr));
+    
+    // Reset line state with a break condition
+    printf("Sending line reset sequence...\n");
+    set_data_pin_direction(1);  // Output
+    set_data_pin(1);            // Idle HIGH
+    delay_ms(50);
+    set_data_pin_direction(0);  // Back to input
+    delay_ms(50);
 }
 
 // Set the direction of the DATA pin (input or output)
@@ -94,8 +108,14 @@ void send_byte(unsigned char byte) {
     
     printf("Sending byte: 0x%02X\n", byte);
     
+    // Ensure line is in idle state (HIGH) before starting
+    set_data_pin(1);
+    delay_ms(BIT_PERIOD_MS * 2);
+    
     // Send start bit (always 0)
-    send_bit(0);
+    // Hold it longer to ensure it's detected
+    set_data_pin(0);
+    delay_ms(BIT_PERIOD_MS * 1.5);
     
     // Send 8 data bits, LSB first
     for (int i = 0; i < 8; i++) {
@@ -103,11 +123,9 @@ void send_byte(unsigned char byte) {
         send_bit(bit);
     }
     
-    // Send stop bit (always 1)
-    send_bit(1);
-    
-    // Add extra idle time between bytes for stability
-    delay_ms(BIT_PERIOD_MS);
+    // Send stop bit (always 1) - hold longer for reliability
+    set_data_pin(1);
+    delay_ms(BIT_PERIOD_MS * 2);
 }
 
 // Receive a byte (8 bits) LSB first, with start and stop bits
@@ -116,12 +134,45 @@ unsigned char receive_byte() {
     unsigned char byte = 0;
     int bit;
     int timeout_count = 0;
+    int consecutive_zeros = 0;
     
     // Set DATA pin as input
     set_data_pin_direction(0);
     
-    // Wait for start bit (logic 0)
-    while (read_data_pin() == 1) {
+    // Wait for a stable line first (should be HIGH in idle)
+    timeout_count = 0;
+    while (1) {
+        if (read_data_pin() == 1) {
+            consecutive_zeros = 0;
+            break;  // Line is stable HIGH, ready to detect start bit
+        }
+        
+        delay_ms(1);
+        timeout_count++;
+        if (timeout_count > 100) {  // 100ms timeout for line to become stable
+            // Try to reset line if it's stuck LOW
+            set_data_pin_direction(1);  // Output
+            set_data_pin(1);            // Force HIGH
+            delay_ms(20);
+            set_data_pin_direction(0);  // Back to input
+            
+            timeout_count = 0;
+            consecutive_zeros = 0;
+        }
+    }
+    
+    // Wait for valid start bit (logic 0)
+    timeout_count = 0;
+    while (1) {
+        if (read_data_pin() == 0) {
+            consecutive_zeros++;
+            if (consecutive_zeros >= 3) {  // Require multiple consecutive zeros to confirm start bit
+                break;  // Confirmed start bit
+            }
+        } else {
+            consecutive_zeros = 0;  // Reset if we see a HIGH
+        }
+        
         delay_ms(1);
         timeout_count++;
         if (timeout_count > MAX_WAIT_TIME_MS) {
@@ -130,44 +181,34 @@ unsigned char receive_byte() {
         }
     }
     
-    // Start bit detected, wait for half bit period to sample in the middle
-    delay_ms(BIT_PERIOD_MS / 2);
+    // Start bit confirmed - skip to middle of the start bit
+    // We've already consumed ~3ms detecting it, so adjust timing
+    delay_ms(BIT_PERIOD_MS / 2 - 3);
     
-    // Verify it's still a valid start bit
-    if (read_data_pin() != 0) {
-        printf("Invalid start bit\n");
-        return 0xFF; // Indicate error
-    }
-    
-    // Wait for the remainder of the start bit
-    delay_ms(BIT_PERIOD_MS / 2);
-    
-    // Read 8 data bits
+    // Read 8 data bits, sampling in the middle of each bit period
+    byte = 0;
     for (int i = 0; i < 8; i++) {
-        // Wait for half bit period to sample in the middle
-        delay_ms(BIT_PERIOD_MS / 2);
+        // Wait for full bit period to get to middle of next bit
+        delay_ms(BIT_PERIOD_MS);
         
-        // Read bit
+        // Sample the bit
         bit = read_data_pin();
         if (bit) {
             byte |= (1 << i);
         }
-        
-        // Wait for remainder of bit period
-        delay_ms(BIT_PERIOD_MS / 2);
     }
     
-    // Wait for half bit period to check stop bit in the middle
-    delay_ms(BIT_PERIOD_MS / 2);
+    // Wait for stop bit (should be HIGH)
+    delay_ms(BIT_PERIOD_MS);
     
-    // Check for valid stop bit (logic 1)
+    // Check for valid stop bit
     if (read_data_pin() != 1) {
         printf("Invalid stop bit\n");
-        return 0xFF; // Indicate error
+        // Continue anyway - we already have the byte
     }
     
-    // Wait for remainder of stop bit
-    delay_ms(BIT_PERIOD_MS / 2);
+    // Additional delay to ensure we're past the stop bit
+    delay_ms(BIT_PERIOD_MS);
     
     printf("Received byte: 0x%02X\n", byte);
     return byte;
@@ -319,13 +360,45 @@ int receive_message() {
     return success;
 }
 
-// Check if start bit detected (polling for incoming data)
+// Check if potential start bit detected (polling for incoming data)
 int check_for_start_bit() {
+    static int prev_state = 1;  // Keep track of previous state
+    static int low_count = 0;   // Count consecutive low readings
+    int current_state;
+    
     // Set DATA pin as input
     set_data_pin_direction(0);
     
-    // Check if data line is low (potential start bit)
-    return (read_data_pin() == 0);
+    // Check data line state
+    current_state = read_data_pin();
+    
+    // If line went from HIGH to LOW
+    if (prev_state == 1 && current_state == 0) {
+        low_count = 1;
+        prev_state = current_state;
+        return 0;  // Not confirmed yet
+    }
+    
+    // If line stays LOW, increment counter
+    if (prev_state == 0 && current_state == 0) {
+        low_count++;
+        // If we see enough consecutive LOWs, it's likely a real start bit
+        if (low_count >= 3) {
+            low_count = 0;
+            // Don't reset prev_state to maintain edge detection
+            return 1;  // Confirmed start bit
+        }
+    }
+    
+    // Update previous state
+    prev_state = current_state;
+    
+    // If line went back to HIGH, reset counter
+    if (current_state == 1) {
+        low_count = 0;
+    }
+    
+    return 0;  // No confirmed start bit
 }
 
 // Main function
@@ -365,21 +438,15 @@ int main(void) {
         // Read switch value
         sw_value = *SW_ptr;
         
-        // Check for incoming data (non-blocking)
-        if (check_for_start_bit()) {
-            if (receive_message()) {
-                printf("Received message from Arduino: %s\n", rx_buffer);
-                
-                // Auto-reply with acknowledgment
-                sprintf(tx_buffer, "DE1_ACK_%d", message_counter++);
-                delay_ms(100); // Small delay before responding
-                send_message(tx_buffer);
-            }
-        }
-        
         // KEY0: Send message to Arduino
         if ((key_value & 0x1) && !(old_key_value & 0x1)) {
             printf("\nKEY0 pressed - Sending test message\n");
+            
+            // Reset line state with a break condition
+            printf("Resetting line state...\n");
+            set_data_pin_direction(1);  // Output
+            set_data_pin(1);            // Idle HIGH
+            delay_ms(100);              // Hold for stability
             
             // Create test message based on switch setting
             if (sw_value & 0x1) {
@@ -389,19 +456,65 @@ int main(void) {
             }
             
             send_message(tx_buffer);
+            
+            // After sending, return to input mode to listen
+            set_data_pin_direction(0);
         }
         
-        // KEY1: Force receive message from Arduino
+        // KEY1: Force line reset and diagnostic mode
         if ((key_value & 0x2) && !(old_key_value & 0x2)) {
-            printf("\nKEY1 pressed - Waiting for message from Arduino\n");
-            receive_message();
+            printf("\nKEY1 pressed - Performing line diagnostics\n");
+            
+            // Force a line reset
+            set_data_pin_direction(1);  // Output
+            set_data_pin(1);            // Force HIGH
+            delay_ms(100);              // Hold for stability
+            set_data_pin(0);            // Send a test pulse
+            delay_ms(BIT_PERIOD_MS * 2);
+            set_data_pin(1);            // Back to idle
+            delay_ms(100);
+            set_data_pin_direction(0);  // Back to input
+            
+            printf("Line reset completed. Current DATA pin state: %d\n", read_data_pin());
+            
+            // Optionally force a receive if SW1 is set
+            if (sw_value & 0x2) {
+                printf("Forcing receive message...\n");
+                receive_message();
+            }
+        }
+        
+        // Check for incoming data (non-blocking)
+        if (check_for_start_bit()) {
+            printf("Potential start bit detected!\n");
+            
+            // Delay just a bit to confirm
+            delay_ms(2);
+            
+            if (read_data_pin() == 0) {
+                printf("Start bit confirmed, receiving message...\n");
+                
+                if (receive_message()) {
+                    printf("Received message from Arduino: %s\n", rx_buffer);
+                    
+                    // Auto-reply with acknowledgment
+                    sprintf(tx_buffer, "DE1_ACK_%d", message_counter++);
+                    delay_ms(200); // Longer delay before responding
+                    send_message(tx_buffer);
+                    
+                    // After sending, return to input mode to listen
+                    set_data_pin_direction(0);
+                }
+            } else {
+                printf("False start bit detection\n");
+            }
         }
         
         // Update old key value for edge detection
         old_key_value = key_value;
         
         // Small delay to prevent CPU hogging
-        delay_ms(10);
+        delay_ms(5);
     }
     
     return 0;
