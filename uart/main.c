@@ -3,8 +3,8 @@
 #include "address_map.h"
 
 // JP1 Pin definitions - using different pins from original
-#define DATA_PIN_BIT 0x00000004  // Bit 2 (D2) for data line
-#define CLOCK_PIN_BIT 0x00000008 // Bit 3 (D3) for clock line (from Arduino)
+#define DATA_PIN_BIT 0x00000001  // Bit 0 (D0) for data line
+#define CLOCK_PIN_BIT 0x00000002 // Bit 1 (D1) for clock line (from Arduino)
 #define CLOCK_RATE 100000000     // 100MHz DE1-SoC system clock
 
 // Global variables
@@ -51,6 +51,9 @@ void set_data_pin_direction(int is_output) {
         // Set DATA pin as input
         *(JP1_ptr + 1) &= ~DATA_PIN_BIT;
     }
+    
+    // Small delay for pin state to stabilize
+    delay_ms(1);
 }
 
 // Set the DATA pin value (when configured as output)
@@ -60,42 +63,83 @@ void set_data_pin(int high) {
     } else {
         *(JP1_ptr) &= ~DATA_PIN_BIT;
     }
+    
+    // Small delay for value to stabilize
+    delay_ms(1);
 }
 
-// Read the DATA pin value
+// Read the DATA pin value with multiple samples for stability
 int read_data_pin() {
-    return (*(JP1_ptr) & DATA_PIN_BIT) ? 1 : 0;
+    // Read multiple times to ensure stable reading
+    int sample1 = (*(JP1_ptr) & DATA_PIN_BIT) ? 1 : 0;
+    delay_ms(1);
+    int sample2 = (*(JP1_ptr) & DATA_PIN_BIT) ? 1 : 0;
+    
+    // Return the majority value
+    return (sample1 == sample2) ? sample1 : (*(JP1_ptr) & DATA_PIN_BIT) ? 1 : 0;
 }
 
-// Read the CLOCK pin value
+// Read the CLOCK pin value with multiple samples for stability
 int read_clock_pin() {
-    return (*(JP1_ptr) & CLOCK_PIN_BIT) ? 1 : 0;
+    // Read multiple times to ensure stable reading
+    int sample1 = (*(JP1_ptr) & CLOCK_PIN_BIT) ? 1 : 0;
+    delay_ms(1);
+    int sample2 = (*(JP1_ptr) & CLOCK_PIN_BIT) ? 1 : 0;
+    
+    // Return the majority value
+    return (sample1 == sample2) ? sample1 : (*(JP1_ptr) & CLOCK_PIN_BIT) ? 1 : 0;
 }
 
-// Receive a single bit by waiting for clock transitions
+// Receive a single bit by waiting for clock transitions with robust edge detection
 int receive_bit() {
     int bit;
-    int prev_clock;
+    int current_clock, prev_clock;
+    int timeout_counter = 0;
+    const int MAX_TIMEOUT = 1000000;  // Arbitrary large value for timeout
     
     // Make sure DATA pin is set as input
     set_data_pin_direction(0);
     
-    // Read initial clock state
+    // Read initial clock state with a small delay for stability
+    delay_ms(1);
     prev_clock = read_clock_pin();
     
     // Wait for clock to transition from HIGH to LOW
     while (1) {
-        int current_clock = read_clock_pin();
+        current_clock = read_clock_pin();
+        
         if (prev_clock == 1 && current_clock == 0) {
-            // Clock transition detected, read the data bit
+            // Clock transition detected, wait a small moment for data to stabilize
+            delay_ms(1);
+            
+            // Read the data bit
             bit = read_data_pin();
             break;
         }
+        
         prev_clock = current_clock;
+        
+        // Timeout prevention
+        timeout_counter++;
+        if (timeout_counter > MAX_TIMEOUT) {
+            printf("Timeout waiting for clock HIGH to LOW transition\n");
+            // Default to reading current data value on timeout
+            bit = read_data_pin();
+            break;
+        }
     }
     
+    // Reset timeout counter
+    timeout_counter = 0;
+    
     // Wait for clock to transition back from LOW to HIGH
-    while (read_clock_pin() == 0);
+    while (read_clock_pin() == 0) {
+        timeout_counter++;
+        if (timeout_counter > MAX_TIMEOUT) {
+            printf("Timeout waiting for clock LOW to HIGH transition\n");
+            break;
+        }
+    }
     
     return bit;
 }
@@ -114,17 +158,41 @@ unsigned char receive_byte() {
     return byte;
 }
 
-// Send a single bit by monitoring clock transitions
+// Send a single bit by monitoring clock transitions with timeout protection
 void send_bit(int bit) {
+    int timeout_counter = 0;
+    const int MAX_TIMEOUT = 1000000;  // Arbitrary large value for timeout
+    
     // Set data line to the desired bit value
     set_data_pin_direction(1);  // Set as output
     set_data_pin(bit);
     
+    // Make sure the data is stable before clock edge
+    delay_ms(1);
+    
     // Wait for clock to transition from HIGH to LOW
-    while (read_clock_pin() == 1);
+    while (read_clock_pin() == 1) {
+        timeout_counter++;
+        if (timeout_counter > MAX_TIMEOUT) {
+            printf("Timeout waiting for clock HIGH to LOW transition during send\n");
+            break;
+        }
+    }
+    
+    // Reset timeout counter
+    timeout_counter = 0;
     
     // Wait for clock to transition back from LOW to HIGH
-    while (read_clock_pin() == 0);
+    while (read_clock_pin() == 0) {
+        timeout_counter++;
+        if (timeout_counter > MAX_TIMEOUT) {
+            printf("Timeout waiting for clock LOW to HIGH transition during send\n");
+            break;
+        }
+    }
+    
+    // Hold the data bit stable for a moment after the clock edge
+    delay_ms(1);
 }
 
 // Send a byte (8 bits) MSB first
@@ -138,7 +206,7 @@ void send_byte(unsigned char byte) {
     }
 }
 
-// Receive a message with basic framing
+// Receive a message with basic framing and improved robustness
 int receive_message() {
     unsigned char byte, length, checksum = 0, calculated_checksum = 0;
     int success = 0;
@@ -148,12 +216,34 @@ int receive_message() {
     
     printf("Waiting for message from Arduino...\n");
     
-    // Wait for start byte
-    byte = receive_byte();
-    if (byte != START_BYTE) {
-        printf("Invalid start byte: 0x%02X, expected 0x%02X\n", byte, START_BYTE);
-        *LEDR_ptr &= ~0x1;
-        return 0;
+    // Clear the data pin direction first for clean start
+    set_data_pin_direction(0);
+    delay_ms(50);
+    
+    // Try multiple times to get a valid start byte
+    int retry_count = 0;
+    const int MAX_RETRIES = 5;
+    
+    while (retry_count < MAX_RETRIES) {
+        // Wait for start byte
+        byte = receive_byte();
+        if (byte == START_BYTE) {
+            printf("Valid start byte detected: 0x%02X\n", byte);
+            break;
+        } else {
+            printf("Invalid start byte on attempt %d: 0x%02X, expected 0x%02X\n", 
+                   retry_count + 1, byte, START_BYTE);
+            retry_count++;
+            
+            if (retry_count >= MAX_RETRIES) {
+                printf("Exceeded maximum retries for start byte\n");
+                *LEDR_ptr &= ~0x1;
+                return 0;
+            }
+            
+            // Small delay before next attempt
+            delay_ms(50);
+        }
     }
     
     // Receive length byte
@@ -273,8 +363,13 @@ int main(void) {
                 // Prepare response message
                 sprintf(tx_buffer, "DE1_MSG_%d", message_counter++);
                 
-                // Short delay to allow Arduino to switch to receive mode
-                delay_ms(100);
+                // Important delay to allow Arduino to switch to receive mode
+                delay_ms(300);
+                
+                // Reset the data pin state explicitly
+                set_data_pin_direction(0);  // First set as input to reset
+                delay_ms(50);
+                set_data_pin_direction(1);  // Then set as output for sending
                 
                 // Send response message
                 send_message(tx_buffer);

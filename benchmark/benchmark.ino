@@ -4,8 +4,8 @@
  */
 
 // Pin definitions - using D2 and D3 instead of D0/D1 to avoid UART conflicts
-#define CLOCK_PIN 2  // Arduino controls clock as master
-#define DATA_PIN 3   // Bidirectional data line
+#define CLOCK_PIN 3  // D3 for clock line - connects to DE1-SoC D1
+#define DATA_PIN 2   // D2 for data line - connects to DE1-SoC D0
 
 // Communication parameters
 #define BIT_PERIOD_MS 5     // 5ms per bit (200 bits/second) - adjust for reliability
@@ -20,11 +20,9 @@ int message_counter = 0;
 #define START_BYTE 0xAA  // 10101010 pattern for synchronization
 #define END_BYTE 0x55    // 01010101 pattern for end of message
 
-// Button for sending test message (built-in button on many Arduino boards)
-#define BUTTON_PIN 7
-int lastButtonState = HIGH;
-unsigned long lastDebounceTime = 0;
-unsigned long debounceDelay = 50;
+// Timer for automatic message sending
+unsigned long lastMessageTime = 0;
+unsigned long messageSendInterval = 5000;  // Send message every 5 seconds
 
 void setup() {
   // Setup USB serial for debugging output
@@ -37,8 +35,7 @@ void setup() {
   // Initialize clock to HIGH (idle state)
   digitalWrite(CLOCK_PIN, HIGH);
   
-  // Configure button with pull-up resistor
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  // No button configuration needed
   
   // Configure built-in LED
   pinMode(LED_BUILTIN, OUTPUT);
@@ -60,19 +57,26 @@ void setup() {
   Serial.println("==============================================");
 }
 
-// Set the DATA pin direction
+// Set the DATA pin direction with stabilization delay
 void setDataPinMode(int mode) {
   pinMode(DATA_PIN, mode);
+  // Add pull-down when in INPUT mode to prevent floating
+  if (mode == INPUT) {
+    pinMode(DATA_PIN, INPUT);  // No pullup
+  }
+  delayMicroseconds(500);  // Allow pin mode to stabilize
 }
 
 // Set the DATA pin value (when configured as OUTPUT)
 void setDataPin(int high) {
   digitalWrite(DATA_PIN, high ? HIGH : LOW);
+  delayMicroseconds(200);  // Allow pin value to stabilize
 }
 
 // Read the DATA pin value
 int readDataPin() {
-  return digitalRead(DATA_PIN);
+  int val = digitalRead(DATA_PIN);
+  return val;
 }
 
 // Send a single bit with clock control
@@ -176,9 +180,13 @@ void sendMessage(char *message) {
   // Send end byte
   sendByte(END_BYTE);
   
-  // Turn off LED
+      // Turn off LED
   digitalWrite(LED_BUILTIN, LOW);
   Serial.println("Message sent successfully");
+  
+  // Reset data pin to input with clear state before receiving
+  setDataPinMode(INPUT);
+  delay(50);  // Ensure clean transition
 }
 
 // Receive a message with basic framing
@@ -191,15 +199,37 @@ bool receiveMessage() {
   
   Serial.println("Waiting for message from DE1-SoC...");
   
-  // Wait for start byte
-  byte = receiveByte();
-  if (byte != START_BYTE) {
-    Serial.print("Invalid start byte: 0x");
-    if (byte < 16) Serial.print("0");
-    Serial.print(byte, HEX);
-    Serial.print(", expected 0x");
-    if (START_BYTE < 16) Serial.print("0");
-    Serial.println(START_BYTE, HEX);
+  // Wait for start byte with retry
+  int retries = 5;
+  bool startFound = false;
+  
+  while (retries > 0 && !startFound) {
+    byte = receiveByte();
+    if (byte == START_BYTE) {
+      startFound = true;
+      Serial.println("Start byte detected successfully");
+    } else {
+      Serial.print("Invalid start byte: 0x");
+      if (byte < 16) Serial.print("0");
+      Serial.print(byte, HEX);
+      Serial.print(", expected 0x");
+      if (START_BYTE < 16) Serial.print("0");
+      Serial.println(START_BYTE, HEX);
+      
+      // Try sending a few clock pulses to reset synchronization
+      for(int i=0; i<2; i++) {
+        digitalWrite(CLOCK_PIN, LOW);
+        delay(BIT_PERIOD_MS/2);
+        digitalWrite(CLOCK_PIN, HIGH);
+        delay(BIT_PERIOD_MS/2);
+      }
+      
+      retries--;
+    }
+  }
+  
+  if (!startFound) {
+    Serial.println("Failed to receive valid start byte after retries");
     digitalWrite(LED_BUILTIN, LOW);
     return false;
   }
@@ -258,35 +288,39 @@ bool receiveMessage() {
 }
 
 void loop() {
-  // Check if button is pressed to initiate communication
-  int reading = digitalRead(BUTTON_PIN);
+  // Check if it's time to send a message based on interval
+  unsigned long currentTime = millis();
   
-  // Debounce button
-  if (reading != lastButtonState) {
-    lastDebounceTime = millis();
-  }
-  
-  if ((millis() - lastDebounceTime) > debounceDelay) {
-    // If button state has changed and it's pressed (LOW due to pull-up)
-    if (reading == LOW && lastButtonState == HIGH) {
-      Serial.println("\nButton pressed - Initiating message exchange");
-      
-      // Create and send test message
-      sprintf(tx_buffer, "ARD_MSG_%d", message_counter++);
-      sendMessage(tx_buffer);
-      
-      // Wait for response from DE1-SoC
-      bool responseReceived = receiveMessage();
-      
-      if (responseReceived) {
-        Serial.println("Message exchange completed successfully");
-      } else {
-        Serial.println("Failed to complete message exchange");
-      }
+  if (currentTime - lastMessageTime >= messageSendInterval) {
+    Serial.println("\nTimer triggered - Initiating message exchange");
+    
+    // Create and send test message
+    sprintf(tx_buffer, "ARD_MSG_%d", message_counter++);
+    sendMessage(tx_buffer);
+    
+    // Brief delay to allow DE1-SoC to prepare for sending
+    delay(200);
+    
+    // Extra synchronization - send a few clock pulses to reset state
+    for(int i=0; i<3; i++) {
+      digitalWrite(CLOCK_PIN, LOW);
+      delay(BIT_PERIOD_MS/2);
+      digitalWrite(CLOCK_PIN, HIGH);
+      delay(BIT_PERIOD_MS/2);
     }
+    
+    // Wait for response from DE1-SoC
+    bool responseReceived = receiveMessage();
+    
+    if (responseReceived) {
+      Serial.println("Message exchange completed successfully");
+    } else {
+      Serial.println("Failed to complete message exchange");
+    }
+    
+    // Update the last message time
+    lastMessageTime = currentTime;
   }
-  
-  lastButtonState = reading;
   
   // Small delay
   delay(10);
