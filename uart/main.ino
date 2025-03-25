@@ -16,7 +16,7 @@
 char tx_buffer[MSG_BUFFER_SIZE];
 char rx_buffer[MSG_BUFFER_SIZE];
 int rx_buffer_pos = 0;
-
+ 
 // Message counter
 int message_counter = 0;
 
