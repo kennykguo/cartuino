@@ -1,17 +1,49 @@
+
 Sync detected - preparing to receive message
+Preparing to receive message...
 Receiving message...
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+RX: 0x2A
+Invalid start byte: 0x2A (expected 0xAA) - retry 1
+RX: 0x09
+Invalid start byte: 0x09 (expected 0xAA) - retry 2
 RX: 0x05
-Invalid start byte: 0x05 (expected 0xAA)
+Invalid start byte: 0x05 (expected 0xAA) - retry 3
+Failed to find valid start byte after retries
 Failed to receive message
 
-Sync detected - preparing to receive message
-Receiving message...
-RX: 0xBE
-Invalid start byte: 0xBE (expected 0xAA)
-Failed to receive message
-
-Sync detected - preparing to receive message
-Receiving message...
-RX: 0x04
-Invalid start byte: 0x04 (expected 0xAA)
-Failed to receive message
+KEY0 pressed - Sending message
+Sending message: "DE1_MSG_0"
+TX: 0xAA
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+TX: 0x09
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+TX: 0x44
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+Clock timeout waiting for LOW (after 10000 us)
+TX: 0x45
+TX: 0x31
+TX: 0x5F
+TX: 0x4D
+TX: 0x53
+TX: 0x47
+TX: 0x5F
+TX: 0x30
+TX: 0x55
+Message sent
