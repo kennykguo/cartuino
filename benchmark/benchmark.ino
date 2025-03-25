@@ -1,15 +1,14 @@
 /*
- * Arduino Asynchronous Communication Protocol - Simplified Version
+ * Arduino Simple Bit-Banged Communication Protocol (Master)
  * For communication with DE1-SoC FPGA
- * 
- * Uses software UART on a single data line (D0)
  */
 
-// Pin definitions
-#define DATA_PIN 0  // D0 for data line
+// Pin definitions - using D2 and D3 instead of D0/D1 to avoid UART conflicts
+#define CLOCK_PIN 2  // Arduino controls clock as master
+#define DATA_PIN 3   // Bidirectional data line
 
 // Communication parameters
-#define BIT_PERIOD_MS 5     // 5ms per bit (200 bps) - must match DE1-SoC
+#define BIT_PERIOD_MS 5     // 5ms per bit (200 bits/second) - adjust for reliability
 #define MSG_BUFFER_SIZE 32  // Buffer size for messages
 char tx_buffer[MSG_BUFFER_SIZE];
 char rx_buffer[MSG_BUFFER_SIZE];
@@ -18,27 +17,31 @@ char rx_buffer[MSG_BUFFER_SIZE];
 int message_counter = 0;
 
 // Protocol constants
-#define START_SEQUENCE 0xAA // 10101010 pattern for synchronization
-#define END_SEQUENCE 0x55   // 01010101 pattern for end of message
+#define START_BYTE 0xAA  // 10101010 pattern for synchronization
+#define END_BYTE 0x55    // 01010101 pattern for end of message
 
-// Timestamp for communication
-unsigned long lastActivityTime = 0;
+// Button for sending test message (built-in button on many Arduino boards)
+#define BUTTON_PIN 7
+int lastButtonState = HIGH;
+unsigned long lastDebounceTime = 0;
+unsigned long debounceDelay = 50;
 
 void setup() {
   // Setup USB serial for debugging output
   Serial.begin(9600);
   
-  // Configure DATA pin - start as output to set a known state
-  pinMode(DATA_PIN, OUTPUT);
-  digitalWrite(DATA_PIN, HIGH);  // Idle state is HIGH
-  delay(100);  // Hold for stability
+  // Configure pins
+  pinMode(CLOCK_PIN, OUTPUT);
+  pinMode(DATA_PIN, INPUT);  // Start as input
   
-  // Now set to input for receiving
-  pinMode(DATA_PIN, INPUT);
+  // Initialize clock to HIGH (idle state)
+  digitalWrite(CLOCK_PIN, HIGH);
+  
+  // Configure button with pull-up resistor
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
   
   // Configure built-in LED
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
   
   // Initial LED flash to show we're ready
   digitalWrite(LED_BUILTIN, HIGH);
@@ -51,12 +54,10 @@ void setup() {
   
   Serial.println("\n\n");
   Serial.println("==============================================");
-  Serial.println("Arduino Simple Communication Protocol Ready");
+  Serial.println("Arduino Master Communication Protocol Ready");
   Serial.println("==============================================");
-  Serial.println("Listening for messages from DE1-SoC...");
+  Serial.println("Press button to initiate message exchange");
   Serial.println("==============================================");
-  
-  lastActivityTime = millis();
 }
 
 // Set the DATA pin direction
@@ -74,82 +75,65 @@ int readDataPin() {
   return digitalRead(DATA_PIN);
 }
 
-// Send a byte using software UART approach
+// Send a single bit with clock control
+void sendBit(int bit) {
+  // Set the data line first
+  setDataPinMode(OUTPUT);
+  setDataPin(bit);
+  delay(1);  // Small setup delay
+  
+  // Toggle clock to signal bit is ready (HIGH to LOW)
+  digitalWrite(CLOCK_PIN, LOW);
+  delay(BIT_PERIOD_MS / 2);
+  
+  // Toggle clock back (LOW to HIGH) to complete bit transmission
+  digitalWrite(CLOCK_PIN, HIGH);
+  delay(BIT_PERIOD_MS / 2);
+}
+
+// Send a byte (8 bits) MSB first
 void sendByte(unsigned char byte) {
   Serial.print("Sending byte: 0x");
   if (byte < 16) Serial.print("0");
   Serial.println(byte, HEX);
   
-  // Set DATA pin as output
-  setDataPinMode(OUTPUT);
-  
-  // Send start bit (always 0)
-  setDataPin(0);
-  delay(BIT_PERIOD_MS);
-  
-  // Send 8 data bits, LSB first
-  for (int i = 0; i < 8; i++) {
+  // Send each bit, MSB first
+  for (int i = 7; i >= 0; i--) {
     int bit = (byte >> i) & 0x01;
-    setDataPin(bit);
-    delay(BIT_PERIOD_MS);
+    sendBit(bit);
   }
-  
-  // Send stop bit (always 1)
-  setDataPin(1);
-  delay(BIT_PERIOD_MS);
-  
-  // Keep line in idle state
-  setDataPin(1);
 }
 
-// Receive a byte using software UART approach
-// Returns -1 on error
-int receiveByte(int timeout_ms) {
-  unsigned char byte = 0;
-  int start_bit_found = 0;
-  unsigned long start_time = millis();
+// Receive a single bit by controlling the clock
+int receiveBit() {
+  int bit;
   
   // Set DATA pin as input
   setDataPinMode(INPUT);
+  delay(1);  // Small setup delay
   
-  // Wait for start bit (logic 0)
-  while (!start_bit_found) {
-    if (readDataPin() == 0) {
-      // Potential start bit detected, wait for half a bit period to verify
-      delay(BIT_PERIOD_MS / 2);
-      
-      // Check if it's still low (valid start bit)
-      if (readDataPin() == 0) {
-        start_bit_found = 1;
-        Serial.println("Start bit detected");
-      }
-    }
-    
-    // Check for timeout
-    if (millis() - start_time > timeout_ms) {
-      Serial.println("Timeout waiting for start bit");
-      return -1;
-    }
-    delay(1);  // Small delay between checks
-  }
-  
-  // Start bit found, wait for the remaining half of start bit
+  // Toggle clock to signal ready to receive (HIGH to LOW)
+  digitalWrite(CLOCK_PIN, LOW);
   delay(BIT_PERIOD_MS / 2);
   
-  // Read 8 data bits
-  for (int i = 0; i < 8; i++) {
-    // Sample in the middle of each bit
-    delay(BIT_PERIOD_MS);
-    if (readDataPin()) {
-      byte |= (1 << i);  // LSB first
-    }
-  }
+  // Read the data bit
+  bit = readDataPin();
   
-  // Wait for and verify stop bit
-  delay(BIT_PERIOD_MS);
-  if (readDataPin() != 1) {
-    Serial.println("Invalid stop bit");
-    return -1;
+  // Toggle clock back (LOW to HIGH) to complete bit reception
+  digitalWrite(CLOCK_PIN, HIGH);
+  delay(BIT_PERIOD_MS / 2);
+  
+  return bit;
+}
+
+// Receive a byte (8 bits) MSB first
+unsigned char receiveByte() {
+  unsigned char byte = 0;
+  
+  // Receive 8 bits, MSB first
+  for (int i = 7; i >= 0; i--) {
+    int bit = receiveBit();
+    byte |= (bit << i);
   }
   
   Serial.print("Received byte: 0x");
@@ -159,9 +143,10 @@ int receiveByte(int timeout_ms) {
   return byte;
 }
 
-// Send a message with simple framing
+// Send a message with basic framing
 void sendMessage(char *message) {
   int len = strlen(message);
+  unsigned char checksum = 0;
   
   // Turn on LED during transmission
   digitalWrite(LED_BUILTIN, HIGH);
@@ -172,147 +157,137 @@ void sendMessage(char *message) {
   Serial.print(len);
   Serial.println(" bytes)");
   
-  // Send start sequence byte
-  sendByte(START_SEQUENCE);
+  // Send start byte
+  sendByte(START_BYTE);
   
   // Send length byte
-  sendByte(len);
+  sendByte((unsigned char)len);
+  checksum ^= len;
   
-  // Send message bytes
+  // Send each byte of the message
   for (int i = 0; i < len; i++) {
-    sendByte(message[i]);
+    sendByte((unsigned char)message[i]);
+    checksum ^= message[i];
   }
   
-  // Send end sequence byte
-  sendByte(END_SEQUENCE);
+  // Send checksum
+  sendByte(checksum);
   
-  // Set pin back to input to listen for next message
-  setDataPinMode(INPUT);
+  // Send end byte
+  sendByte(END_BYTE);
   
   // Turn off LED
   digitalWrite(LED_BUILTIN, LOW);
-  
-  Serial.println("Message sent");
+  Serial.println("Message sent successfully");
 }
 
-// Receive a message with simple framing
-int receiveMessage(int timeout_ms) {
-  int byte_val;
-  int len;
+// Receive a message with basic framing
+bool receiveMessage() {
+  unsigned char byte, length, checksum = 0, calculated_checksum = 0;
+  bool success = false;
   
   // Turn on LED during reception
   digitalWrite(LED_BUILTIN, HIGH);
   
-  Serial.println("Receiving message...");
+  Serial.println("Waiting for message from DE1-SoC...");
   
-  // Wait for and verify start sequence
-  byte_val = receiveByte(timeout_ms);
-  if (byte_val != START_SEQUENCE) {
-    if (byte_val != -1) {  // Only print error if not a timeout
-      Serial.print("Invalid start sequence: 0x");
-      if (byte_val < 16) Serial.print("0");
-      Serial.print(byte_val, HEX);
-      Serial.print(", expected 0x");
-      if (START_SEQUENCE < 16) Serial.print("0");
-      Serial.println(START_SEQUENCE, HEX);
-    }
+  // Wait for start byte
+  byte = receiveByte();
+  if (byte != START_BYTE) {
+    Serial.print("Invalid start byte: 0x");
+    if (byte < 16) Serial.print("0");
+    Serial.print(byte, HEX);
+    Serial.print(", expected 0x");
+    if (START_BYTE < 16) Serial.print("0");
+    Serial.println(START_BYTE, HEX);
     digitalWrite(LED_BUILTIN, LOW);
-    return 0;
+    return false;
   }
   
   // Receive length byte
-  byte_val = receiveByte(timeout_ms);
-  if (byte_val < 0) {
-    Serial.println("Error receiving length byte");
-    digitalWrite(LED_BUILTIN, LOW);
-    return 0;
-  }
-  len = byte_val;
+  length = receiveByte();
+  calculated_checksum ^= length;
   
   Serial.print("Expecting message of ");
-  Serial.print(len);
+  Serial.print(length);
   Serial.println(" bytes");
   
   // Ensure length is reasonable
-  if (len >= MSG_BUFFER_SIZE) {
+  if (length >= MSG_BUFFER_SIZE) {
     Serial.print("Message too long: ");
-    Serial.print(len);
+    Serial.print(length);
     Serial.println(" bytes");
     digitalWrite(LED_BUILTIN, LOW);
-    return 0;
+    return false;
   }
   
-  // Receive each byte of the message
-  for (int i = 0; i < len; i++) {
-    byte_val = receiveByte(timeout_ms);
-    if (byte_val < 0) {
-      Serial.print("Error receiving data byte ");
-      Serial.println(i);
-      digitalWrite(LED_BUILTIN, LOW);
-      return 0;
-    }
-    rx_buffer[i] = byte_val;
+  // Receive message bytes
+  int pos = 0;
+  for (int i = 0; i < length; i++) {
+    byte = receiveByte();
+    rx_buffer[pos++] = byte;
+    calculated_checksum ^= byte;
   }
   
   // Null-terminate the string
-  rx_buffer[len] = '\0';
+  rx_buffer[pos] = '\0';
   
-  // Receive end sequence
-  byte_val = receiveByte(timeout_ms);
-  if (byte_val != END_SEQUENCE) {
-    Serial.print("Invalid end sequence: 0x");
-    if (byte_val < 16) Serial.print("0");
-    Serial.print(byte_val, HEX);
-    Serial.print(", expected 0x");
-    if (END_SEQUENCE < 16) Serial.print("0");
-    Serial.println(END_SEQUENCE, HEX);
-    digitalWrite(LED_BUILTIN, LOW);
-    return 0;
+  // Receive checksum
+  checksum = receiveByte();
+  
+  // Receive end byte
+  byte = receiveByte();
+  
+  // Verify checksum and end byte
+  if (byte != END_BYTE) {
+    Serial.println("Invalid end byte");
+    success = false;
+  } else if (checksum != calculated_checksum) {
+    Serial.println("Checksum error");
+    success = false;
+  } else {
+    Serial.print("Message received successfully: \"");
+    Serial.print(rx_buffer);
+    Serial.println("\"");
+    success = true;
   }
   
-  Serial.print("Message received successfully: \"");
-  Serial.print(rx_buffer);
-  Serial.println("\"");
-  
+  // Turn off LED
   digitalWrite(LED_BUILTIN, LOW);
-  return 1;
-}
-
-// Check if DATA pin is low (potential start bit)
-bool detectStartBit() {
-  setDataPinMode(INPUT);
-  return (readDataPin() == 0);
+  return success;
 }
 
 void loop() {
-  // Check for incoming message from DE1-SoC
-  if (detectStartBit()) {
-    Serial.println("Potential start bit detected!");
-    
-    if (receiveMessage(200)) {  // 200ms timeout for each byte
-      Serial.print("Received message from DE1-SoC: ");
-      Serial.println(rx_buffer);
+  // Check if button is pressed to initiate communication
+  int reading = digitalRead(BUTTON_PIN);
+  
+  // Debounce button
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();
+  }
+  
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    // If button state has changed and it's pressed (LOW due to pull-up)
+    if (reading == LOW && lastButtonState == HIGH) {
+      Serial.println("\nButton pressed - Initiating message exchange");
       
-      // Auto-respond with an acknowledgment message
-      delay(100);  // Small delay before responding
-      sprintf(tx_buffer, "ARD_ACK_%d", message_counter++);
+      // Create and send test message
+      sprintf(tx_buffer, "ARD_MSG_%d", message_counter++);
       sendMessage(tx_buffer);
+      
+      // Wait for response from DE1-SoC
+      bool responseReceived = receiveMessage();
+      
+      if (responseReceived) {
+        Serial.println("Message exchange completed successfully");
+      } else {
+        Serial.println("Failed to complete message exchange");
+      }
     }
-    
-    lastActivityTime = millis();
   }
   
-  // If it's been 5 seconds since last activity, print diagnostic info
-  if (millis() - lastActivityTime > 5000) {
-    // Read and print current line state
-    setDataPinMode(INPUT);
-    int lineState = readDataPin();
-    Serial.print("Waiting for activity... Line state: ");
-    Serial.println(lineState);
-    
-    lastActivityTime = millis();
-  }
+  lastButtonState = reading;
   
-  // Small delay to prevent CPU hogging
-  delay(5);
+  // Small delay
+  delay(10);
 }
