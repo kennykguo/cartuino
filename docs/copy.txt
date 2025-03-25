@@ -1,27 +1,35 @@
-Waiting for message...
-Timeout waiting for clock LOW
-Bit receive error at bit 7
-Invalid or missing start sequence: 0xFFFFFFFF, expected 0xAA
-Detected Arduino initiation signal
-Waiting for message...
-Timeout waiting for clock LOW
-Bit receive error at bit 7
-Invalid or missing start sequence: 0xFFFFFFFF, expected 0xAA
-Detected Arduino initiation signal
-Waiting for message...
-Timeout waiting for clock LOW
-Bit receive error at bit 7
-Invalid or missing start sequence: 0xFFFFFFFF, expected 0xAA
-Detected Arduino initiation signal
-Waiting for message...
-Timeout waiting for clock LOW
-Bit receive error at bit 7
-Invalid or missing start sequence: 0xFFFFFFFF, expected 0xAA
-Detected Arduino initiation signal
-Waiting for message...
-Timeout waiting for clock LOW
-Bit receive error at bit 7
-Invalid or missing start sequence: 0xFFFFFFFF, expected 0xAA
-Detected Arduino initiation signal
-Waiting for message...
-Timeout waiting for clock LOW
+===================================
+DE1-SoC Slave Communication Started
+===================================
+JP1 communication initialized
+DATA_PIN_BIT = 0x00000001 (D2), CLOCK_PIN_BIT = 0x00000002 (D3)
+JP1 direction register value: 0x00000000
+JP1 data register value: 0xFFFFFFFF
+
+KEY0 pressed - Waiting for Arduino message
+Waiting for message from Arduino...
+Received byte: 0xF3
+Invalid start byte on attempt 1: 0xF3, expected 0xAA
+Received byte: 0x28
+Invalid start byte on attempt 2: 0x28, expected 0xAA
+Received byte: 0xFF
+Invalid start byte on attempt 3: 0xFF, expected 0xAA
+Received byte: 0xF3
+Invalid start byte on attempt 4: 0xF3, expected 0xAA
+Received byte: 0xB7
+Invalid start byte on attempt 5: 0xB7, expected 0xAA
+Exceeded maximum retries for start byte
+
+KEY0 pressed - Waiting for Arduino message
+Waiting for message from Arduino...
+Received byte: 0xF3
+Invalid start byte on attempt 1: 0xF3, expected 0xAA
+Received byte: 0xDB
+Invalid start byte on attempt 2: 0xDB, expected 0xAA
+Received byte: 0x10
+Invalid start byte on attempt 3: 0x10, expected 0xAA
+Received byte: 0xFF
+Invalid start byte on attempt 4: 0xFF, expected 0xAA
+Received byte: 0xF3
+Invalid start byte on attempt 5: 0xF3, expected 0xAA
+Exceeded maximum retries for start byte
