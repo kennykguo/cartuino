@@ -59,6 +59,8 @@
   "files.associations": {
     "stdio.h": "c",
     "address_map.h": "c",
-    "string.h": "c"
+    "string.h": "c",
+    "stddef.h": "c",
+    "stdlib.h": "c"
   }
 }

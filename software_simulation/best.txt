@@ -1,0 +1,9 @@
+Best Hyperparameters:                                                                               
+PPO_EPOCHS: 8                                                                                       
+GAMMA: 0.980                                                                                        
+LAMBDA: 0.950                                                                                       
+CLIP_EPSILON: 0.100                                                                                 
+LEARNING_RATE: 0.00600                                                                              
+EXPLORE_RATE: 0.350                                                                                 
+Best Reward: 1498 at Episode 0                                                                      
+Timer was used 4353 times for entropy                                                               

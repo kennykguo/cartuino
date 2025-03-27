@@ -6,7 +6,7 @@
 
 #include <stdlib.h>
 #include <math.h>
-#include <stddef.h>  // for null def.
+#include <stddef.h>  // for null def
 
 #define VGA_WIDTH 320
 #define VGA_HEIGHT 240
@@ -21,7 +21,7 @@
 #define TIME_STEP 0.02f
 #define RANDOM_FORCE_MAX 0.5f
 #define PIXEL_SCALE 50.0f
-#define MAX_ANGLE_RAD 0.55
+#define MAX_ANGLE_RAD 0.75
 
 // VGA DISPLAY PARAMETERS
 #define CART_WIDTH 40
@@ -40,33 +40,28 @@
 #define MAGENTA 0xF81F
 
 // PP0 ALGO PARAMETERS - - - - - - - - - - - - - - - - - - - - - - - -
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 // https://en.wikipedia.org/wiki/Asynchronous_serial_communication
 // https://en.wikipedia.org/wiki/Asynchronous_communication
+// Mess around with the LR + other parameters
+// Think about implementing weight decay
 #define STATE_DIM 4 // NEVER CHANGE
 #define ACTION_DIM 2 // NEVER CHANGE
 #define HIDDEN_DIM 64
-
-// #define BATCH_SIZE 128 // Used for policy_forward
-// Before was 16
-#define PPO_EPOCHS 8
-
-
-// Previous was 0.99
-#define GAMMA 0.98f
-#define LAMBDA 0.95f
-
-
-// Previous was 0.2f
-#define CLIP_EPSILON 0.1f
-// Previous was 0.005f. 0.0075
-#define LEARNING_RATE 0.006f   
 #define MAX_EPISODES 1000
 #define MAX_STEPS_PER_EPOCH 300  // longer episodes -> allow more learning
-// Before was 0.3f, 0.2
+
+
+#define PPO_EPOCHS 8
+#define GAMMA 0.98f
+#define LAMBDA 0.95f
+#define CLIP_EPSILON 0.1f
+#define LEARNING_RATE 0.006f   
 #define EXPLORE_RATE 0.25f
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-// Mess around with the LR + other parameters
-// Think about implementing weight decay
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+
 
 // TRAINING/INFERENCES MODES
 #define MODE_TRAIN 0
@@ -520,7 +515,7 @@ int is_terminal_state() {
 
     // Additional termination condition - if angular velocity is too high
     // This helps prevent wild oscillations
-    if (my_abs(state.pole_angular_vel) > 4.0f) return 1;
+    if (my_abs(state.pole_angular_vel) > 8.0f) return 1;
 
     return 0;
 }
