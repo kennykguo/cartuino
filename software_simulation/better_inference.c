@@ -18,13 +18,13 @@
 // SIMULATION PARAMETERS
 #define GRAVITY 9.8f
 #define CART_MASS 1.0f
-#define POLE_MASS 0.1f
-#define POLE_HALF_LENGTH 0.5f
+#define POLE_MASS 0.2f
+#define POLE_HALF_LENGTH 0.75f
 #define FORCE_MAG 20.0f
 #define TIME_STEP 0.02f
 #define RANDOM_FORCE_MAX 0.5f
 #define PIXEL_SCALE 50.0f
-#define MAX_ANGLE_RAD 0.5
+#define MAX_ANGLE_RAD 0.55
 #define MAX_ANGULAR_VELOCITY 4.0f
 
 // VGA DISPLAY PARAMETERS
@@ -47,17 +47,17 @@
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 #define STATE_DIM 4 // NEVER CHANGE
 #define ACTION_DIM 2 // NEVER CHANGE
-#define HIDDEN_DIM 128
+#define HIDDEN_DIM 64
 #define MAX_EPISODES 1000
 #define MAX_STEPS_PER_EPOCH 300  // longer episodes -> allow more learning
 
 
-#define PPO_EPOCHS 4
-#define GAMMA 0.99f
+#define PPO_EPOCHS 12
+#define GAMMA 0.98f
 #define LAMBDA 0.95f
-#define CLIP_EPSILON 0.15f
-#define LEARNING_RATE 0.00025f   
-#define EXPLORE_RATE 0.15f  // Updated from 0.25f based on tuning results
+#define CLIP_EPSILON 0.1f
+#define LEARNING_RATE 0.007f   
+#define EXPLORE_RATE 0.25f  // Updated from 0.25f based on tuning results
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
@@ -535,26 +535,56 @@ int sample_action(float probs[ACTION_DIM]) {
     return (probs[1] > probs[0]) ? 1 : 0;
 }
 // calculate the reward for the current state
+// float calculate_reward() {
+//     if (is_terminal_state()) {
+//         return -10.0f;
+//     }
+    
+//     // Quadratic angle reward - heavily rewards staying upright
+//     float angle_reward = 1.0f - (my_abs(state.pole_angle) / MAX_ANGLE_RAD);
+//     angle_reward = angle_reward * angle_reward;
+    
+//     // Position reward - less important than angle
+//     float position_reward = 1.0f - (my_abs(state.cart_position) / 2.0f);
+//     position_reward = position_reward * position_reward;
+    
+//     // Velocity penalties to encourage smoother control
+//     float vel_penalty = 0.1f * my_abs(state.cart_velocity) / 10.0f;
+//     float ang_vel_penalty = 0.1f * my_abs(state.pole_angular_vel) / MAX_ANGULAR_VELOCITY;
+    
+//     return 1.0f + (5.0f * angle_reward + 2.0f * position_reward - vel_penalty - ang_vel_penalty);
+// }
+// calculate the reward for the current state
+// Revised calculate_reward function with more stable reward scaling
 float calculate_reward() {
+    // Larger penalty for terminal states to discourage failures
     if (is_terminal_state()) {
-        return -10.0f;
+        return -20.0f;  // Reduced from -50.0f to avoid extreme values
     }
-    
-    // Quadratic angle reward - heavily rewards staying upright
-    float angle_reward = 1.0f - (my_abs(state.pole_angle) / MAX_ANGLE_RAD);
-    angle_reward = angle_reward * angle_reward;
-    
-    // Position reward - less important than angle
-    float position_reward = 1.0f - (my_abs(state.cart_position) / 2.0f);
-    position_reward = position_reward * position_reward;
-    
-    // Velocity penalties to encourage smoother control
-    float vel_penalty = 0.1f * my_abs(state.cart_velocity) / 10.0f;
-    float ang_vel_penalty = 0.1f * my_abs(state.pole_angular_vel) / MAX_ANGULAR_VELOCITY;
-    
-    return 1.0f + (5.0f * angle_reward + 2.0f * position_reward - vel_penalty - ang_vel_penalty);
-}
 
+    // Angle component - higher reward for balancing pole upright
+    // Cubic reward function instead of quartic for better numerical stability
+    float angle_reward = 1.0f - (my_abs(state.pole_angle) / MAX_ANGLE_RAD);
+    angle_reward = angle_reward * angle_reward * angle_reward;  // Cubic reward curve
+
+    // Position component - encourage staying near center
+    float position_reward = 1.0f - (my_abs(state.cart_position) / 2.0f);
+    position_reward = position_reward * position_reward;  // Squared reward curve
+
+    // Velocity penalties - discourage both cart velocity and angular velocity
+    // Added clipping to prevent extreme values
+    float cart_vel_clipped = my_clamp(state.cart_velocity, -10.0f, 10.0f);
+    float ang_vel_clipped = my_clamp(state.pole_angular_vel, -MAX_ANGULAR_VELOCITY, MAX_ANGULAR_VELOCITY);
+    
+    float vel_penalty = -0.05f * my_abs(cart_vel_clipped);
+    float ang_vel_penalty = -0.1f * my_abs(ang_vel_clipped);
+
+    // Living bonus - encourage agent to survive longer
+    float living_bonus = 0.1f;
+
+    // Combined reward - angle is most important, but scaled down for stability
+    return 15.0f * angle_reward + 5.0f * position_reward + vel_penalty + ang_vel_penalty + living_bonus;
+}
 
 // check if the state is terminal (pole fallen or cart out of bounds)
 int is_terminal_state() {
@@ -1348,36 +1378,42 @@ float my_min(float a, float b) {
     return a < b ? a : b;
 }
 
-// fast approximation of exponential function
+// Improved my_exp function with better numerical stability
 float my_exp(float x) {
-    // Prevent overflow/underflow
-    if (x > 88.0f) return 1e38f;  // Close to float max
-    if (x < -88.0f) return 0.0f;
+    // Prevent overflow/underflow with stricter bounds
+    if (x > 15.0f) return 3269017.3724721f;  // e^15 is large but not too extreme
+    if (x < -15.0f) return 1e-6f;  // Small positive number instead of 0
 
-    // More accurate Taylor series
+    // More accurate Taylor series for small values
     if (x >= -1.0f && x <= 1.0f) {
         float result = 1.0f + x;
         float term = x;
         for (int i = 2; i < 12; i++) {
             term *= x / i;
             result += term;
+            // Prevent terms from becoming too small to matter
+            if (my_abs(term) < 1e-10f) break;
         }
         return result;
     }
 
-    // For larger ranges, use e^x = (e^(x/2))²
+    // For larger ranges, use e^x = (e^(x/2))² with recursion
     if (x < -1.0f || x > 1.0f) {
         float half = my_exp(x * 0.5f);
         return half * half;
     }
 
-    return 0.0f;  // Should not reach here
+    return 1.0f;  // Fallback (shouldn't reach here)
 }
+
 
 // fast approximation of logarithm 
 float my_log(float x) {
-    // Handle invalid inputs
-    if (x <= 0.0f) return -88.0f;  // Return a large negative value
+    // Handle invalid inputs with a more graceful fallback
+    if (x <= 1e-10f) return -23.0f;  // log(1e-10) ≈ -23, avoid extreme negatives
+
+    // Clamp input for stability
+    x = my_clamp(x, 1e-10f, 1e10f);
 
     // Normalize input to [1,2)
     float a = x;
@@ -1392,9 +1428,9 @@ float my_log(float x) {
     }
 
     // More robust polynomial approximation for log(1+x)
-    float y = (a - 1.0f) / (a + 1.0f);
-    float y2 = y * y;
-    float result = 2.0f * y * (1.0f + y2/3.0f + y2*y2/5.0f + y2*y2*y2/7.0f);
+    float z = (a - 1.0f) / (a + 1.0f);
+    float z2 = z * z;
+    float result = 2.0f * z * (1.0f + z2/3.0f + z2*z2/5.0f + z2*z2*z2/7.0f);
     
     // log(2) ≈ 0.693147
     return result + exponent * 0.693147f;
@@ -1432,7 +1468,7 @@ float leaky_relu(float x) {
     return x > 0.0f ? x : 0.01f * x;
 }
 
-// Neural Network forward pass for policy - with two hidden layers
+// More robust policy_forward with numerical safeguards
 void policy_forward(float state[STATE_DIM], float probs[ACTION_DIM]) {
     float hidden1[HIDDEN_DIM];
     float hidden2[HIDDEN_DIM];
@@ -1444,17 +1480,17 @@ void policy_forward(float state[STATE_DIM], float probs[ACTION_DIM]) {
             hidden1[i] += state[j] * nn.weights1[j][i];
         }
         hidden1[i] += nn.bias1[i];
-        hidden1[i] = hidden1[i] > 0.0f ? hidden1[i] : 0.01f * hidden1[i];  // LeakyReLU
+        hidden1[i] = leaky_relu(hidden1[i]);  // Using improved activation function
     }
 
-    // First hidden to second hidden layer - Ensure indexes match initialization
+    // First hidden to second hidden layer
     for (int i = 0; i < HIDDEN_DIM; i++) {
         hidden2[i] = 0.0f;
         for (int j = 0; j < HIDDEN_DIM; j++) {
-            hidden2[i] += hidden1[j] * nn.weights_h2h[j][i];  // [from][to] indexing
+            hidden2[i] += hidden1[j] * nn.weights_h2h[j][i];
         }
         hidden2[i] += nn.bias_h2[i];
-        hidden2[i] = hidden2[i] > 0.0f ? hidden2[i] : 0.01f * hidden2[i];  // LeakyReLU
+        hidden2[i] = leaky_relu(hidden2[i]);  // Using improved activation function
     }
 
     // Second hidden to output layer
@@ -1465,9 +1501,12 @@ void policy_forward(float state[STATE_DIM], float probs[ACTION_DIM]) {
             output[i] += hidden2[j] * nn.weights2[j][i];
         }
         output[i] += nn.bias2[i];
+        
+        // Clamp outputs to prevent extreme values
+        output[i] = my_clamp(output[i], -10.0f, 10.0f);
     }
 
-    // Softmax activation for probabilities with numerical stability
+    // Softmax activation with improved numerical stability
     float max_val = output[0];
     for (int i = 1; i < ACTION_DIM; i++) {
         if (output[i] > max_val) max_val = output[i];
@@ -1480,7 +1519,7 @@ void policy_forward(float state[STATE_DIM], float probs[ACTION_DIM]) {
         sum_exp += probs[i];
     }
 
-    // Avoid division by zero
+    // More robust division protection
     if (sum_exp < 1e-8f) sum_exp = 1e-8f;
     
     for (int i = 0; i < ACTION_DIM; i++) {
@@ -1492,11 +1531,21 @@ void policy_forward(float state[STATE_DIM], float probs[ACTION_DIM]) {
     }
 
     // Renormalize after clamping
-    sum_exp = probs[0] + probs[1];
-    if (sum_exp < 1e-8f) sum_exp = 1.0f;  // Safety check
+    sum_exp = 0.0f;
+    for (int i = 0; i < ACTION_DIM; i++) {
+        sum_exp += probs[i];
+    }
     
-    probs[0] /= sum_exp;
-    probs[1] /= sum_exp;
+    if (sum_exp > 0.0f) {
+        for (int i = 0; i < ACTION_DIM; i++) {
+            probs[i] /= sum_exp;
+        }
+    } else {
+        // Fallback to uniform distribution in case of severe numerical problems
+        for (int i = 0; i < ACTION_DIM; i++) {
+            probs[i] = 1.0f / ACTION_DIM;
+        }
+    }
 }
 
 // Neural Network forward pass for value function - with two hidden layers
@@ -1623,21 +1672,25 @@ void init_network() {
 float log_prob(float probs[ACTION_DIM], int action) {
     return my_log(probs[action]);
 }
-
-// Calculate advantages and returns for PPO with improved normalization
+// More robust compute_advantages function
 void compute_advantages() {
-    // Compute returns with N-step bootstrapping
+    // First compute returns (discounted sum of future rewards)
     for (int t = memory.size - 1; t >= 0; t--) {
         float next_value;
         if (memory.dones[t]) {
             next_value = 0.0f;
         } else {
             next_value = value_forward(memory.next_states[t]);
+            // Clamp value estimates for stability
+            next_value = my_clamp(next_value, -50.0f, 50.0f);
         }
         memory.returns[t] = memory.rewards[t] + GAMMA * next_value;
+        
+        // Clamp returns to prevent extreme values
+        memory.returns[t] = my_clamp(memory.returns[t], -100.0f, 100.0f);
     }
 
-    // Compute GAE advantages
+    // Compute GAE advantages with safety checks
     float gae = 0.0f;
     for (int t = memory.size - 1; t >= 0; t--) {
         float next_value;
@@ -1645,10 +1698,26 @@ void compute_advantages() {
             next_value = 0.0f;
         } else {
             next_value = value_forward(memory.next_states[t]);
+            // Clamp value estimates for stability
+            next_value = my_clamp(next_value, -50.0f, 50.0f);
         }
-        float delta = memory.rewards[t] + GAMMA * next_value - memory.values[t];
+        
+        // Clamp values to prevent extreme deltas
+        float current_value = my_clamp(memory.values[t], -50.0f, 50.0f);
+        float reward = my_clamp(memory.rewards[t], -50.0f, 50.0f);
+        
+        float delta = reward + GAMMA * next_value - current_value;
+        
+        // Clamp delta for stability
+        delta = my_clamp(delta, -10.0f, 10.0f);
+        
+        // Clamp previous GAE to prevent accumulation of extreme values
+        gae = my_clamp(gae, -10.0f, 10.0f);
+        
         gae = delta + GAMMA * LAMBDA * gae;
-        memory.advantages[t] = gae;
+        
+        // Store clamped advantage
+        memory.advantages[t] = my_clamp(gae, -10.0f, 10.0f);
     }
 
     // Normalize advantages for better training stability
@@ -1662,20 +1731,34 @@ void compute_advantages() {
 
         float mean = sum / memory.size;
         float variance = (sum_sq / memory.size) - (mean * mean);
-        float std_dev = my_sqrt(variance + 1e-8f); // Add small epsilon to avoid division by zero
+        
+        // Ensure variance is positive
+        if (variance < 1e-8f) variance = 1e-8f;
+        
+        float std_dev = my_sqrt(variance);
 
-        // Normalize advantages
+        // Normalize advantages with enhanced stability
         for (int t = 0; t < memory.size; t++) {
             memory.advantages[t] = (memory.advantages[t] - mean) / std_dev;
+            
+            // Final clamp to ensure reasonable values
+            memory.advantages[t] = my_clamp(memory.advantages[t], -5.0f, 5.0f);
         }
     }
 }
-
-// Update neural network parameters using improved PPO implementation
+// Complete update_network function with robust numerical stability
 void update_network() {
-    // Adaptive learning rate - decrease learning rate as training progresses
+    // Adaptive learning rate with a lower bound for stability
     float current_lr = LEARNING_RATE * (1.0f - (float)stats.epoch / MAX_EPISODES);
-    if (current_lr < LEARNING_RATE * 0.1f) current_lr = LEARNING_RATE * 0.1f;
+    current_lr = my_clamp(current_lr, LEARNING_RATE * 0.1f, LEARNING_RATE);
+
+    // Define maximum gradient magnitude for clipping
+    const float MAX_GRAD = 1.0f;
+    
+    // Early termination if memory buffer is too small
+    if (memory.size < 4) {
+        return;  // Avoid updates with insufficient data
+    }
 
     // Perform multiple epochs of updates
     for (int epoch = 0; epoch < PPO_EPOCHS; epoch++) {
@@ -1706,11 +1789,13 @@ void update_network() {
             indices[j] = temp;
         }
 
-        // Process mini-batches
-        int batch_size = memory.size > 32 ? memory.size/4 : min(memory.size, 8);
+        // Process mini-batches with a minimum size to ensure stability
+        int batch_size = my_max(4, memory.size / 4);
         for (int start = 0; start < memory.size; start += batch_size) {
-            int end = start + batch_size;
-            if (end > memory.size) end = memory.size;
+            int end = my_min(start + batch_size, memory.size);
+            
+            // Skip processing if batch is too small
+            if (end - start < 2) continue;
 
             for (int b = start; b < end; b++) {
                 int t = indices[b];
@@ -1750,65 +1835,83 @@ void update_network() {
                         output[i] += hidden2[j] * nn.weights2[j][i];
                     }
                     output[i] += nn.bias2[i];
+                    // Clamp outputs to prevent extreme values
+                    output[i] = my_clamp(output[i], -10.0f, 10.0f);
                 }
 
-                // Softmax
+                // Softmax calculation with numerical stability
                 float max_val = output[0];
                 for (int i = 1; i < ACTION_DIM; i++) {
                     if (output[i] > max_val) max_val = output[i];
                 }
 
+                // Subtract max for numerical stability
                 float sum_exp = 0.0f;
                 for (int i = 0; i < ACTION_DIM; i++) {
                     probs[i] = my_exp(output[i] - max_val);
                     sum_exp += probs[i];
                 }
 
+                // Avoid division by zero
                 if (sum_exp < 1e-8f) sum_exp = 1e-8f;
                 
                 for (int i = 0; i < ACTION_DIM; i++) {
                     probs[i] /= sum_exp;
+                    // Clamp probabilities to avoid numerical issues
                     if (probs[i] < 0.001f) probs[i] = 0.001f;
                     if (probs[i] > 0.999f) probs[i] = 0.999f;
                 }
 
+                // Renormalize after clamping
                 sum_exp = probs[0] + probs[1];
-                if (sum_exp < 1e-8f) sum_exp = 1.0f;
+                if (sum_exp < 1e-8f) sum_exp = 1.0f;  // Safety check
                 probs[0] /= sum_exp;
                 probs[1] /= sum_exp;
 
-                // Log probability and PPO ratio
+                // Log probability and PPO ratio with safeguards
                 float current_log_prob = my_log(probs[memory.actions[t]]);
                 
-                
-
+                // Clamp log prob difference to prevent extreme ratios
                 float log_prob_diff = current_log_prob - memory.log_probs[t];
                 log_prob_diff = my_clamp(log_prob_diff, -10.0f, 10.0f);  // Prevent extreme values
+                
                 float ratio = my_exp(log_prob_diff);
-
+                ratio = my_clamp(ratio, 0.1f, 10.0f);  // Prevent ratio explosion
 
                 float advantage = memory.advantages[t];
+                advantage = my_clamp(advantage, -10.0f, 10.0f);  // Clip advantage for stability
+                
                 float clip_ratio = my_clamp(ratio, 1.0f-CLIP_EPSILON, 1.0f+CLIP_EPSILON);
                 
                 // Variable unused - removed warning
                 // float policy_loss = -my_min(ratio*advantage, clip_ratio*advantage);
 
-                // Policy gradient for output layer
+                // Policy gradient for output layer with clamping
                 float doutput[ACTION_DIM] = {0};
                 if (ratio < 1.0f - CLIP_EPSILON || ratio > 1.0f + CLIP_EPSILON) {
                     // Use clipped gradient
                     float clip_factor = clip_ratio / ratio;
+                    clip_factor = my_clamp(clip_factor, 0.1f, 10.0f);  // Prevent extreme clip factors
+                    
                     for (int i = 0; i < ACTION_DIM; i++) {
-                        doutput[i] = (i == memory.actions[t])
-                            ? -clip_factor * advantage * (1.0f - probs[i])
-                            : clip_factor * advantage * probs[i];
+                        if (i == memory.actions[t]) {
+                            doutput[i] = -clip_factor * advantage * (1.0f - probs[i]);
+                        } else {
+                            doutput[i] = clip_factor * advantage * probs[i];
+                        }
+                        // Clamp gradients
+                        doutput[i] = my_clamp(doutput[i], -5.0f, 5.0f);
                     }
                 } else {
                     // Use unclipped gradient
                     for (int i = 0; i < ACTION_DIM; i++) {
-                        doutput[i] = (i == memory.actions[t])
-                            ? -advantage * (1.0f - probs[i])
-                            : advantage * probs[i];
+                        if (i == memory.actions[t]) {
+                            doutput[i] = -advantage * (1.0f - probs[i]);
+                        } else {
+                            doutput[i] = advantage * probs[i];
+                        }
+                        // Clamp gradients
+                        doutput[i] = my_clamp(doutput[i], -5.0f, 5.0f);
                     }
                 }
 
@@ -1820,7 +1923,10 @@ void update_network() {
                     for (int j = 0; j < ACTION_DIM; j++) {
                         grad += doutput[j] * nn.weights2[i][j];
                     }
-                    dhidden2[i] = grad * (hidden2[i] > 0 ? 1.0f : 0.01f); // LeakyReLU derivative
+                    // Apply leaky ReLU derivative
+                    dhidden2[i] = grad * (hidden2[i] > 0 ? 1.0f : 0.01f);
+                    // Clamp gradients
+                    dhidden2[i] = my_clamp(dhidden2[i], -5.0f, 5.0f);
                 }
 
                 // First hidden layer gradients
@@ -1830,7 +1936,10 @@ void update_network() {
                     for (int j = 0; j < HIDDEN_DIM; j++) {
                         grad += dhidden2[j] * nn.weights_h2h[i][j];
                     }
-                    dhidden1[i] = grad * (hidden1[i] > 0 ? 1.0f : 0.01f); // LeakyReLU derivative
+                    // Apply leaky ReLU derivative
+                    dhidden1[i] = grad * (hidden1[i] > 0 ? 1.0f : 0.01f);
+                    // Clamp gradients
+                    dhidden1[i] = my_clamp(dhidden1[i], -5.0f, 5.0f);
                 }
 
                 // Accumulate gradients for all layers
@@ -1895,9 +2004,18 @@ void update_network() {
                 }
                 value += nn.value_bias2[0];
                 
+                // Clamp value to prevent extreme loss
+                value = my_clamp(value, -50.0f, 50.0f);
+                
                 // Value loss gradient (MSE)
-                float value_diff = value - memory.returns[t];
+                float target_value = memory.returns[t];
+                target_value = my_clamp(target_value, -50.0f, 50.0f);  // Clamp target
+                
+                float value_diff = value - target_value;
+                value_diff = my_clamp(value_diff, -10.0f, 10.0f);  // Prevent extreme differences
+                
                 float dvalue = 2.0f * value_diff;
+                dvalue = my_clamp(dvalue, -10.0f, 10.0f);  // Clamp gradient
                 
                 // Backpropagate through value network
                 // Second hidden layer gradients
@@ -1905,6 +2023,7 @@ void update_network() {
                 for (int i = 0; i < HIDDEN_DIM; i++) {
                     dv_hidden2[i] = dvalue * nn.value_weights2[i][0];
                     dv_hidden2[i] *= (v_hidden2[i] > 0.0f ? 1.0f : 0.01f); // LeakyReLU derivative
+                    dv_hidden2[i] = my_clamp(dv_hidden2[i], -5.0f, 5.0f);  // Clamp gradient
                 }
                 
                 // First hidden layer gradients
@@ -1915,6 +2034,7 @@ void update_network() {
                         grad += dv_hidden2[j] * nn.value_weights_h2h[i][j];
                     }
                     dv_hidden1[i] = grad * (v_hidden1[i] > 0.0f ? 1.0f : 0.01f); // LeakyReLU derivative
+                    dv_hidden1[i] = my_clamp(dv_hidden1[i], -5.0f, 5.0f);  // Clamp gradient
                 }
                 
                 // Accumulate value gradients
@@ -1945,46 +2065,162 @@ void update_network() {
                 vdb2[0] += dvalue;
             }
 
+            // Apply global gradient clipping
+            float policy_grad_norm = 0.0f;
+            float value_grad_norm = 0.0f;
+            
+            // Calculate policy gradient norm
+            for (int i = 0; i < STATE_DIM; i++) {
+                for (int j = 0; j < HIDDEN_DIM; j++) {
+                    policy_grad_norm += dw1[i][j] * dw1[i][j];
+                }
+            }
+            for (int i = 0; i < HIDDEN_DIM; i++) {
+                policy_grad_norm += db1[i] * db1[i];
+                for (int j = 0; j < HIDDEN_DIM; j++) {
+                    policy_grad_norm += dw_h2h[i][j] * dw_h2h[i][j];
+                }
+                policy_grad_norm += db_h2[i] * db_h2[i];
+                for (int j = 0; j < ACTION_DIM; j++) {
+                    policy_grad_norm += dw2[i][j] * dw2[i][j];
+                }
+            }
+            for (int j = 0; j < ACTION_DIM; j++) {
+                policy_grad_norm += db2[j] * db2[j];
+            }
+            
+            // Calculate value gradient norm
+            for (int i = 0; i < STATE_DIM; i++) {
+                for (int j = 0; j < HIDDEN_DIM; j++) {
+                    value_grad_norm += vdw1[i][j] * vdw1[i][j];
+                }
+            }
+            for (int i = 0; i < HIDDEN_DIM; i++) {
+                value_grad_norm += vdb1[i] * vdb1[i];
+                for (int j = 0; j < HIDDEN_DIM; j++) {
+                    value_grad_norm += vdw_h2h[i][j] * vdw_h2h[i][j];
+                }
+                value_grad_norm += vdb_h2[i] * vdb_h2[i];
+                value_grad_norm += vdw2[i][0] * vdw2[i][0];
+            }
+            value_grad_norm += vdb2[0] * vdb2[0];
+            
+            policy_grad_norm = my_sqrt(policy_grad_norm);
+            value_grad_norm = my_sqrt(value_grad_norm);
+            
+            // Scale down gradients if norm is too large
+            float policy_scale = 1.0f;
+            float value_scale = 1.0f;
+            
+            if (policy_grad_norm > MAX_GRAD) {
+                policy_scale = MAX_GRAD / (policy_grad_norm + 1e-8f);
+            }
+            
+            if (value_grad_norm > MAX_GRAD) {
+                value_scale = MAX_GRAD / (value_grad_norm + 1e-8f);
+            }
+            
             // Apply gradients after each mini-batch with proper scaling
             float batch_scale = current_lr / (end - start);
+            batch_scale = my_clamp(batch_scale, 0.0f, 0.01f);  // Limit maximum update size
 
             // Update policy network
             // First layer weights and biases
             for (int i = 0; i < STATE_DIM; i++) {
                 for (int j = 0; j < HIDDEN_DIM; j++) {
-                    nn.weights1[i][j] -= dw1[i][j] * batch_scale;
-                    nn.value_weights1[i][j] -= vdw1[i][j] * batch_scale;
+                    nn.weights1[i][j] -= dw1[i][j] * batch_scale * policy_scale;
+                    nn.value_weights1[i][j] -= vdw1[i][j] * batch_scale * value_scale;
+                    
+                    // Check for extreme values after update
+                    nn.weights1[i][j] = my_clamp(nn.weights1[i][j], -20.0f, 20.0f);
+                    nn.value_weights1[i][j] = my_clamp(nn.value_weights1[i][j], -20.0f, 20.0f);
                 }
             }
             for (int i = 0; i < HIDDEN_DIM; i++) {
-                nn.bias1[i] -= db1[i] * batch_scale;
-                nn.value_bias1[i] -= vdb1[i] * batch_scale;
+                nn.bias1[i] -= db1[i] * batch_scale * policy_scale;
+                nn.value_bias1[i] -= vdb1[i] * batch_scale * value_scale;
+                
+                // Check for extreme values after update
+                nn.bias1[i] = my_clamp(nn.bias1[i], -20.0f, 20.0f);
+                nn.value_bias1[i] = my_clamp(nn.value_bias1[i], -20.0f, 20.0f);
             }
 
             // Hidden-to-hidden layer weights and biases
             for (int i = 0; i < HIDDEN_DIM; i++) {
                 for (int j = 0; j < HIDDEN_DIM; j++) {
-                    nn.weights_h2h[i][j] -= dw_h2h[i][j] * batch_scale;
-                    nn.value_weights_h2h[i][j] -= vdw_h2h[i][j] * batch_scale;
+                    nn.weights_h2h[i][j] -= dw_h2h[i][j] * batch_scale * policy_scale;
+                    nn.value_weights_h2h[i][j] -= vdw_h2h[i][j] * batch_scale * value_scale;
+                    
+                    // Check for extreme values after update
+                    nn.weights_h2h[i][j] = my_clamp(nn.weights_h2h[i][j], -20.0f, 20.0f);
+                    nn.value_weights_h2h[i][j] = my_clamp(nn.value_weights_h2h[i][j], -20.0f, 20.0f);
                 }
             }
             for (int i = 0; i < HIDDEN_DIM; i++) {
-                nn.bias_h2[i] -= db_h2[i] * batch_scale;
-                nn.value_bias_h2[i] -= vdb_h2[i] * batch_scale;
+                nn.bias_h2[i] -= db_h2[i] * batch_scale * policy_scale;
+                nn.value_bias_h2[i] -= vdb_h2[i] * batch_scale * value_scale;
+                
+                // Check for extreme values after update
+                nn.bias_h2[i] = my_clamp(nn.bias_h2[i], -20.0f, 20.0f);
+                nn.value_bias_h2[i] = my_clamp(nn.value_bias_h2[i], -20.0f, 20.0f);
             }
 
             // Output layer weights and biases
             for (int i = 0; i < HIDDEN_DIM; i++) {
                 for (int j = 0; j < ACTION_DIM; j++) {
-                    nn.weights2[i][j] -= dw2[i][j] * batch_scale;
+                    nn.weights2[i][j] -= dw2[i][j] * batch_scale * policy_scale;
+                    
+                    // Check for extreme values after update
+                    nn.weights2[i][j] = my_clamp(nn.weights2[i][j], -20.0f, 20.0f);
                 }
-                nn.value_weights2[i][0] -= vdw2[i][0] * batch_scale;
+                nn.value_weights2[i][0] -= vdw2[i][0] * batch_scale * value_scale;
+                
+                // Check for extreme values after update
+                nn.value_weights2[i][0] = my_clamp(nn.value_weights2[i][0], -20.0f, 20.0f);
             }
             for (int i = 0; i < ACTION_DIM; i++) {
-                nn.bias2[i] -= db2[i] * batch_scale;
+                nn.bias2[i] -= db2[i] * batch_scale * policy_scale;
+                
+                // Check for extreme values after update
+                nn.bias2[i] = my_clamp(nn.bias2[i], -20.0f, 20.0f);
             }
-            nn.value_bias2[0] -= vdb2[0] * batch_scale;
+            nn.value_bias2[0] -= vdb2[0] * batch_scale * value_scale;
+            
+            // Check for extreme values after update
+            nn.value_bias2[0] = my_clamp(nn.value_bias2[0], -20.0f, 20.0f);
+            
+            // Periodically check for NaN values
+            if (start == 0 && epoch == 0) {
+                for (int i = 0; i < STATE_DIM; i++) {
+                    for (int j = 0; j < HIDDEN_DIM; j++) {
+                        // Using the fact that NaN is never equal to itself
+                        if (nn.weights1[i][j] != nn.weights1[i][j]) {
+                            // NaN detected - reset this weight
+                            nn.weights1[i][j] = (2.0f * random_float() - 1.0f) * 0.1f;
+                        }
+                        if (nn.value_weights1[i][j] != nn.value_weights1[i][j]) {
+                            nn.value_weights1[i][j] = (2.0f * random_float() - 1.0f) * 0.1f;
+                        }
+                    }
+                }
+            }
         }
+    }
+    
+    // Final check for NaN values in key parameters
+    int nan_count = 0;
+    for (int i = 0; i < STATE_DIM; i++) {
+        for (int j = 0; j < min(5, HIDDEN_DIM); j++) {  // Check a subset for efficiency
+            if (nn.weights1[i][j] != nn.weights1[i][j]) {
+                nan_count++;
+            }
+        }
+    }
+    
+    // If too many NaNs detected, reset the network
+    if (nan_count > 3) {
+        printf("WARNING: %d NaN values detected in network weights. Resetting network.\n", nan_count);
+        init_network();
     }
 }
 
