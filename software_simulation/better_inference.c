@@ -1,3 +1,4 @@
+// This inference file is much more stable now
 #define PIXEL_BUF_CTRL_BASE 0xFF203020
 #define KEY_BASE            0xFF200050
 #define LEDR_BASE           0xFF200000
@@ -17,13 +18,14 @@
 // SIMULATION PARAMETERS
 #define GRAVITY 9.8f
 #define CART_MASS 1.0f
-#define POLE_MASS 0.15f
-#define POLE_HALF_LENGTH 0.75f
-#define FORCE_MAG 50.0f
+#define POLE_MASS 0.1f
+#define POLE_HALF_LENGTH 0.5f
+#define FORCE_MAG 20.0f
 #define TIME_STEP 0.02f
 #define RANDOM_FORCE_MAX 0.5f
 #define PIXEL_SCALE 50.0f
-#define MAX_ANGLE_RAD 0.75
+#define MAX_ANGLE_RAD 0.5
+#define MAX_ANGULAR_VELOCITY 4.0f
 
 // VGA DISPLAY PARAMETERS
 #define CART_WIDTH 40
@@ -45,17 +47,17 @@
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 #define STATE_DIM 4 // NEVER CHANGE
 #define ACTION_DIM 2 // NEVER CHANGE
-#define HIDDEN_DIM 64
+#define HIDDEN_DIM 128
 #define MAX_EPISODES 1000
 #define MAX_STEPS_PER_EPOCH 300  // longer episodes -> allow more learning
 
 
-#define PPO_EPOCHS 12
-#define GAMMA 0.98f
+#define PPO_EPOCHS 4
+#define GAMMA 0.99f
 #define LAMBDA 0.95f
-#define CLIP_EPSILON 0.1f
-#define LEARNING_RATE 0.0001f   
-#define EXPLORE_RATE 0.25f  // Updated from 0.25f based on tuning results
+#define CLIP_EPSILON 0.15f
+#define LEARNING_RATE 0.00025f   
+#define EXPLORE_RATE 0.15f  // Updated from 0.25f based on tuning results
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
@@ -509,6 +511,7 @@ int choose_action() {
         // explotation -> choose most probable action
         return (action_probs[1] > action_probs[0]) ? 1 : 0;
     }
+    // return (action_probs[1] > action_probs[0]) ? 1 : 0;
 }
 
 // sample action from policy probabilities
@@ -531,30 +534,27 @@ int sample_action(float probs[ACTION_DIM]) {
     // Fallback: return highest probability action
     return (probs[1] > probs[0]) ? 1 : 0;
 }
-
 // calculate the reward for the current state
 float calculate_reward() {
-    // Immediate failure penalty
     if (is_terminal_state()) {
-        return -50.0f;
+        return -10.0f;
     }
     
-    // The closer to vertical, the better the reward
-    float angle_factor = 1.0f - (my_abs(state.pole_angle) / MAX_ANGLE_RAD);
-    float angle_reward = powf(angle_factor, 4); // Exponential reward for being upright
+    // Quadratic angle reward - heavily rewards staying upright
+    float angle_reward = 1.0f - (my_abs(state.pole_angle) / MAX_ANGLE_RAD);
+    angle_reward = angle_reward * angle_reward;
     
-    // Reward for pole moving toward center (reducing angular velocity)
-    float correction_reward = 0.0f;
-    if (state.pole_angle * state.pole_angular_vel < 0) { // Moving toward center
-        correction_reward = 2.0f * my_min(1.0f, my_abs(state.pole_angular_vel));
-    }
+    // Position reward - less important than angle
+    float position_reward = 1.0f - (my_abs(state.cart_position) / 2.0f);
+    position_reward = position_reward * position_reward;
     
-    // Position and velocity penalties
-    float position_penalty = -0.2f * powf(state.cart_position / 2.4f, 2);
-    float velocity_penalty = -0.1f * powf(state.cart_velocity / 10.0f, 2);
+    // Velocity penalties to encourage smoother control
+    float vel_penalty = 0.1f * my_abs(state.cart_velocity) / 10.0f;
+    float ang_vel_penalty = 0.1f * my_abs(state.pole_angular_vel) / MAX_ANGULAR_VELOCITY;
     
-    return 1.0f - (my_abs(state.pole_angle) / MAX_ANGLE_RAD) * 0.8f - (my_abs(state.cart_position) / 2.4f) * 0.2f;
+    return 1.0f + (5.0f * angle_reward + 2.0f * position_reward - vel_penalty - ang_vel_penalty);
 }
+
 
 // check if the state is terminal (pole fallen or cart out of bounds)
 int is_terminal_state() {
@@ -566,7 +566,7 @@ int is_terminal_state() {
 
     // Additional termination condition - if angular velocity is too high
     // This helps prevent wild oscillations
-    if (my_abs(state.pole_angular_vel) > 8.0f) return 1;
+    if (my_abs(state.pole_angular_vel) > MAX_ANGULAR_VELOCITY) return 1;
 
     return 0;
 }
@@ -1990,9 +1990,9 @@ void update_network() {
 
 int min(x,y){
     if (x>y){
-        return x;
+        return y;
     }
     else{
-        return y;
+        return x;
     }
 }
