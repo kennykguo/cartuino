@@ -61,6 +61,17 @@
     "address_map.h": "c",
     "string.h": "c",
     "stddef.h": "c",
-    "stdlib.h": "c"
+    "stdlib.h": "c",
+    "__bit_reference": "c",
+    "algorithm": "c",
+    "bitset": "c",
+    "istream": "c",
+    "limits": "c",
+    "locale": "c",
+    "ratio": "c",
+    "streambuf": "c",
+    "string": "c",
+    "string_view": "c",
+    "complex": "c"
   }
 }

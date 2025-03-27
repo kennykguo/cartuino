@@ -19,7 +19,7 @@
 #define CART_MASS 1.0f
 #define POLE_MASS 0.15f
 #define POLE_HALF_LENGTH 0.75f
-#define FORCE_MAG 20.0f
+#define FORCE_MAG 50.0f
 #define TIME_STEP 0.02f
 #define RANDOM_FORCE_MAX 0.5f
 #define PIXEL_SCALE 50.0f
@@ -50,11 +50,11 @@
 #define MAX_STEPS_PER_EPOCH 300  // longer episodes -> allow more learning
 
 
-#define PPO_EPOCHS 8
+#define PPO_EPOCHS 12
 #define GAMMA 0.98f
 #define LAMBDA 0.95f
 #define CLIP_EPSILON 0.1f
-#define LEARNING_RATE 0.000075f   
+#define LEARNING_RATE 0.0001f   
 #define EXPLORE_RATE 0.25f  // Updated from 0.25f based on tuning results
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
@@ -176,7 +176,7 @@ float my_exp(float x);
 float my_log(float x);
 float leaky_relu(float x);
 void calculate_weight_stats(float weights[][HIDDEN_DIM], int rows, int cols, char* name);
-
+int min(x,y);
 
 
 int main(void) {
@@ -288,7 +288,7 @@ int main(void) {
             int action;
             if (current_mode == MODE_TRAIN) {
                 // Sample action for training with more exploration
-                float explore_rate = my_max(EXPLORE_RATE, 0.5f * (1.0f - (float)stats.epoch / 100.0f)); // Gradually reduce exploration
+                float explore_rate = my_max(EXPLORE_RATE, 0.6f * (1.0f - (float)stats.epoch / 200.0f));
                 if (random_float() < explore_rate) {
                     // Take random action with probability explore_rate
                     action = random_int(0, ACTION_DIM - 1);
@@ -553,7 +553,7 @@ float calculate_reward() {
     float position_penalty = -0.2f * powf(state.cart_position / 2.4f, 2);
     float velocity_penalty = -0.1f * powf(state.cart_velocity / 10.0f, 2);
     
-    return (30.0f * angle_reward) + correction_reward + position_penalty + velocity_penalty + 1.0f;
+    return 1.0f - (my_abs(state.pole_angle) / MAX_ANGLE_RAD) * 0.8f - (my_abs(state.cart_position) / 2.4f) * 0.2f;
 }
 
 // check if the state is terminal (pole fallen or cart out of bounds)
@@ -1707,7 +1707,7 @@ void update_network() {
         }
 
         // Process mini-batches
-        int batch_size = memory.size > 4 ? memory.size/4 : 1;
+        int batch_size = memory.size > 32 ? memory.size/4 : min(memory.size, 8);
         for (int start = 0; start < memory.size; start += batch_size) {
             int end = start + batch_size;
             if (end > memory.size) end = memory.size;
@@ -1985,5 +1985,14 @@ void update_network() {
             }
             nn.value_bias2[0] -= vdb2[0] * batch_scale;
         }
+    }
+}
+
+int min(x,y){
+    if (x>y){
+        return x;
+    }
+    else{
+        return y;
     }
 }
