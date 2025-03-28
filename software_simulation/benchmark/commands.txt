@@ -1,0 +1,2 @@
+gcc -o cartpole_benchmark cartpole_benchmark.c -lm   
+./cartpole_benchmark
