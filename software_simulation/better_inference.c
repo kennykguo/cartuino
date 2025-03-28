@@ -1045,16 +1045,14 @@ void draw_start_screen() {
 
     // Draw instructions
     int instr_y = VGA_HEIGHT - 60;
-    // draw_text(VGA_WIDTH / 2 - 80, instr_y, "HOW TO TRAIN YOUR POLE:", GREEN);
-
-    instr_y += 10;
-    draw_text(VGA_WIDTH / 2 - 120, instr_y, "1. PRESS KEY1 TO TOGGLE TRAIN/INFERENCE", WHITE);
-
+    draw_text(VGA_WIDTH / 2 - 80, instr_y, "HOW TO TRAIN YOUR POLE:", GREEN);
+    
     instr_y += 10;
     draw_text(VGA_WIDTH / 2 - 120, instr_y, "2. PRESS KEY0 TO START/RESTART SIMULATION", WHITE);
 
     instr_y += 10;
-    draw_text(VGA_WIDTH / 2 - 120, instr_y, "3. PRESS KEY2: TRAIN=SAVE, INFER=LOAD BEST", WHITE);
+    draw_text(VGA_WIDTH / 2 - 120, instr_y, "1. PRESS KEY1 TO TOGGLE TRAIN/INFERENCE", WHITE);
+
 }
 
 // Function to print training statistics
