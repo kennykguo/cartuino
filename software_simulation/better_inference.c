@@ -96,6 +96,7 @@ typedef struct {
     float value_bias_h2[HIDDEN_DIM];                      // Second hidden bias
     float value_weights2[HIDDEN_DIM][1];                  // Second hidden to output
     float value_bias2[1];                                 // Output bias
+    float reward;
 } NeuralNetwork;
 
 // mem. buffer to store experiences
@@ -179,41 +180,50 @@ float my_log(float x);
 float leaky_relu(float x);
 void calculate_weight_stats(float weights[][HIDDEN_DIM], int rows, int cols, char* name);
 int min(x,y);
+
+
 void save_best_weights();
 void load_best_weights();
 NeuralNetwork best_nn;  // To store the best network weights
 int best_epoch = 0;     // To track which epoch had the best performance
+NeuralNetwork training_backup;  // To preserve current training progress
+int backup_valid = 0;           // Flag indicating backup exists
 
 
-// Save the current network weights as the best weights
 void save_best_weights() {
     my_memcpy(&best_nn, &nn, sizeof(NeuralNetwork));
     best_epoch = stats.epoch;
     best_steps = stats.step;
+    best_nn.reward = stats.total_reward;  // Store the reward
     
     // Visual feedback
     *LEDR_ptr = 0x3FF;  // Turn on all LEDs briefly
-    for (int i = 0; i < 100000; i++) asm volatile("nop");
-    *LEDR_ptr = 0x0;
-    
-    printf("Saved best weights from epoch %d (steps: %d)\n", best_epoch, best_steps);
+    printf("Saved best weights from epoch %d (reward: %d, steps: %d)\n", 
+           best_epoch, stats.total_reward, best_steps);
 }
 
-// Load the best saved weights into the network
-void load_best_weights() {
-    if (best_epoch > 0) {  // Only load if we have saved weights
-        my_memcpy(&nn, &best_nn, sizeof(NeuralNetwork));
-        
-        // Visual feedback
-        *LEDR_ptr = 0x155;  // Alternating pattern
-        for (int i = 0; i < 100000; i++) asm volatile("nop");
-        *LEDR_ptr = 0x0;
-        
-        printf("Loaded best weights from epoch %d (steps: %d)\n", best_epoch, best_steps);
-    } else {
-        printf("No best weights saved yet!\n");
+// New function to restore training progress
+void restore_training_weights() {
+    if (backup_valid) {
+        my_memcpy(&nn, &training_backup, sizeof(NeuralNetwork));
+        printf("Restored training progress\n");
     }
 }
+
+
+// Modified load function
+void load_best_weights() {
+    if (best_epoch > 0) {
+        my_memcpy(&training_backup, &nn, sizeof(NeuralNetwork));
+        backup_valid = 1;
+        my_memcpy(&nn, &best_nn, sizeof(NeuralNetwork));
+        
+        printf("Loaded best weights (Epoch %d, Reward %d)\n", 
+              best_epoch, (int)best_nn.reward);
+    }
+}
+
+
 
 int main(void) {
     volatile int * pixel_ctrl_ptr = (int *)PIXEL_BUF_CTRL_BASE;
@@ -399,9 +409,8 @@ int main(void) {
                     stats.best_reward = stats.total_reward;
                     print_training_stats();  // Print stats when new best reward is achieved
                     printf("NEW BEST REWARD ACHIEVED!\n");
+                    save_best_weights();
                 }
-                // Automatically save weights when we achieve a new best reward
-                save_best_weights();
 
                 if (current_mode == MODE_TRAIN) {
                     // Ensure the network gets updated
@@ -470,21 +479,43 @@ int main(void) {
             // Wait for key release (simple debouncing)
             while (*KEY_ptr & 0x2);
 
-            // Toggle mode
-            current_mode = (current_mode == MODE_TRAIN) ? MODE_INFERENCE : MODE_TRAIN;
-        }
-
-        if (*KEY_ptr & 0x4) {
-            // Wait for key release (simple debouncing)
-            while (*KEY_ptr & 0x4);
-            
             if (current_mode == MODE_TRAIN) {
-                save_best_weights();  // In training mode, save current weights as best
+                // Switching from TRAIN to INFERENCE mode
+                my_memcpy(&training_backup, &nn, sizeof(NeuralNetwork));
+                backup_valid = 1;
+                
+                // 2. Load best weights for inference if available
+                if (best_epoch > 0) {
+                    my_memcpy(&nn, &best_nn, sizeof(NeuralNetwork));
+                    printf("Switched to INFERENCE mode using best weights (Epoch %d, Reward %d)\n", 
+                        best_epoch, (int)best_nn.reward);
+                } else {
+                    printf("Switched to INFERENCE mode (no best weights yet)\n");
+                }
+                
+                // 3. Set mode to inference
+                current_mode = MODE_INFERENCE;
+                
             } else {
-                load_best_weights();  // In inference mode, load the best saved weights
+                // Switching from INFERENCE back to TRAIN mode
+                
+                // 1. Restore training weights if backup exists
+                if (backup_valid) {
+                    my_memcpy(&nn, &training_backup, sizeof(NeuralNetwork));
+                    printf("Switched to TRAINING mode (restored training weights)\n");
+                } else {
+                    printf("Switched to TRAINING mode\n");
+                }
+                
+                // 2. Set mode to training
+                current_mode = MODE_TRAIN;
             }
+            
+            // Visual feedback
+            *LEDR_ptr = 0x2AA;  // Pattern to indicate mode change
+            for (int i = 0; i < 100000; i++) asm volatile("nop");
+            *LEDR_ptr = 0;
         }
-
         // Draw the cart-pole and stats
         draw_cart_pole();
         draw_stats();
@@ -602,39 +633,36 @@ int sample_action(float probs[ACTION_DIM]) {
 //     return 1.0f + (5.0f * angle_reward + 2.0f * position_reward - vel_penalty - ang_vel_penalty);
 // }
 // calculate the reward for the current state
+
 // Revised calculate_reward function with more stable reward scaling
 float calculate_reward() {
-    // Larger penalty for terminal states
+    // Larger penalty for terminal states to discourage failures
     if (is_terminal_state()) {
-        return -20.0f;
+        return -20.0f;  // Reduced from -50.0f to avoid extreme values
     }
 
     // Angle component - higher reward for balancing pole upright
+    // Cubic reward function instead of quartic for better numerical stability
     float angle_reward = 1.0f - (my_abs(state.pole_angle) / MAX_ANGLE_RAD);
     angle_reward = angle_reward * angle_reward * angle_reward;  // Cubic reward curve
 
-    // Position component - more aggressive center-seeking behavior
+    // Position component - encourage staying near center
     float position_reward = 1.0f - (my_abs(state.cart_position) / 2.0f);
-    position_reward = position_reward * position_reward * position_reward;  // Make cubic instead of squared
+    position_reward = position_reward * position_reward;  // Squared reward curve
 
-    // Velocity penalties
+    // Velocity penalties - discourage both cart velocity and angular velocity
+    // Added clipping to prevent extreme values
     float cart_vel_clipped = my_clamp(state.cart_velocity, -10.0f, 10.0f);
     float ang_vel_clipped = my_clamp(state.pole_angular_vel, -MAX_ANGULAR_VELOCITY, MAX_ANGULAR_VELOCITY);
     
     float vel_penalty = -0.05f * my_abs(cart_vel_clipped);
     float ang_vel_penalty = -0.1f * my_abs(ang_vel_clipped);
 
-    // Center-seeking bonus (new) - extra reward for being close to center
-    float center_bonus = 0.0f;
-    if (my_abs(state.cart_position) < 0.5f) {
-        center_bonus = 0.5f * (1.0f - my_abs(state.cart_position) / 0.5f);
-    }
-
-    // Living bonus
+    // Living bonus - encourage agent to survive longer
     float living_bonus = 0.1f;
 
-    // Combined reward with increased position component weight
-    return 15.0f * angle_reward + 10.0f * position_reward + center_bonus + vel_penalty + ang_vel_penalty + living_bonus;
+    // Combined reward - angle is most important, but scaled down for stability
+    return 15.0f * angle_reward + 5.0f * position_reward + vel_penalty + ang_vel_penalty + living_bonus;
 }
 
 

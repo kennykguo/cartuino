@@ -27,7 +27,7 @@
 #define LAMBDA 0.95f
 
 // Training configuration
-#define REWARD_THRESHOLD 2500
+#define REWARD_THRESHOLD 2100
 #define WEIGHTS_FILE_PREFIX "best_weights"
 
 typedef struct {
@@ -278,38 +278,35 @@ void update_physics(int action) {
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 float calculate_reward() {
-    // Larger penalty for terminal states
+    // Larger penalty for terminal states to discourage failures
     if (is_terminal_state()) {
-        return -20.0f;
+        return -20.0f;  // Reduced from -50.0f to avoid extreme values
     }
 
     // Angle component - higher reward for balancing pole upright
+    // Cubic reward function instead of quartic for better numerical stability
     float angle_reward = 1.0f - (my_abs(state.pole_angle) / MAX_ANGLE_RAD);
     angle_reward = angle_reward * angle_reward * angle_reward;  // Cubic reward curve
 
-    // Position component - more aggressive center-seeking behavior
+    // Position component - encourage staying near center
     float position_reward = 1.0f - (my_abs(state.cart_position) / 2.0f);
-    position_reward = position_reward * position_reward * position_reward;  // Make cubic instead of squared
+    position_reward = position_reward * position_reward;  // Squared reward curve
 
-    // Velocity penalties
+    // Velocity penalties - discourage both cart velocity and angular velocity
+    // Added clipping to prevent extreme values
     float cart_vel_clipped = my_clamp(state.cart_velocity, -10.0f, 10.0f);
     float ang_vel_clipped = my_clamp(state.pole_angular_vel, -MAX_ANGULAR_VELOCITY, MAX_ANGULAR_VELOCITY);
     
     float vel_penalty = -0.05f * my_abs(cart_vel_clipped);
     float ang_vel_penalty = -0.1f * my_abs(ang_vel_clipped);
 
-    // Center-seeking bonus (new) - extra reward for being close to center
-    float center_bonus = 0.0f;
-    if (my_abs(state.cart_position) < 0.5f) {
-        center_bonus = 0.5f * (1.0f - my_abs(state.cart_position) / 0.5f);
-    }
-
-    // Living bonus
+    // Living bonus - encourage agent to survive longer
     float living_bonus = 0.1f;
 
-    // Combined reward with increased position component weight
-    return 15.0f * angle_reward + 10.0f * position_reward + center_bonus + vel_penalty + ang_vel_penalty + living_bonus;
+    // Combined reward - angle is most important, but scaled down for stability
+    return 15.0f * angle_reward + 5.0f * position_reward + vel_penalty + ang_vel_penalty + living_bonus;
 }
+
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
