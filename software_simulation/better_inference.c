@@ -24,7 +24,7 @@
 #define TIME_STEP 0.02f
 #define RANDOM_FORCE_MAX 0.5f
 #define PIXEL_SCALE 50.0f
-#define MAX_ANGLE_RAD 0.55
+#define MAX_ANGLE_RAD 0.45
 #define MAX_ANGULAR_VELOCITY 4.0f
 
 // VGA DISPLAY PARAMETERS
@@ -885,7 +885,7 @@ void draw_line(int startx, int starty, int endx, int endy, short int colour) {
 void draw_cart_pole() {
     // Calculate screen coordinates for cart
     int cart_screen_x = VGA_WIDTH / 2 + (int)(state.cart_position * PIXEL_SCALE);
-    int cart_screen_y = VGA_HEIGHT - CART_HEIGHT - 10;  // 10 pixels from bottom
+    int cart_screen_y = VGA_HEIGHT - CART_HEIGHT - 30;  // 10 pixels from bottom
 
     // Draw the cart (as a simple rectangle)
     for (int y = 0; y < CART_HEIGHT; y++) {
@@ -1044,7 +1044,7 @@ void draw_start_screen() {
               demo_cart_x + 80, demo_cart_y + 20, WHITE);
 
     // Draw instructions
-    int instr_y = VGA_HEIGHT - 60;
+    int instr_y = VGA_HEIGHT - 50;
     draw_text(VGA_WIDTH / 2 - 80, instr_y, "HOW TO TRAIN YOUR POLE:", GREEN);
     
     instr_y += 10;
