@@ -179,7 +179,41 @@ float my_log(float x);
 float leaky_relu(float x);
 void calculate_weight_stats(float weights[][HIDDEN_DIM], int rows, int cols, char* name);
 int min(x,y);
+void save_best_weights();
+void load_best_weights();
+NeuralNetwork best_nn;  // To store the best network weights
+int best_epoch = 0;     // To track which epoch had the best performance
 
+
+// Save the current network weights as the best weights
+void save_best_weights() {
+    my_memcpy(&best_nn, &nn, sizeof(NeuralNetwork));
+    best_epoch = stats.epoch;
+    best_steps = stats.step;
+    
+    // Visual feedback
+    *LEDR_ptr = 0x3FF;  // Turn on all LEDs briefly
+    for (int i = 0; i < 100000; i++) asm volatile("nop");
+    *LEDR_ptr = 0x0;
+    
+    printf("Saved best weights from epoch %d (steps: %d)\n", best_epoch, best_steps);
+}
+
+// Load the best saved weights into the network
+void load_best_weights() {
+    if (best_epoch > 0) {  // Only load if we have saved weights
+        my_memcpy(&nn, &best_nn, sizeof(NeuralNetwork));
+        
+        // Visual feedback
+        *LEDR_ptr = 0x155;  // Alternating pattern
+        for (int i = 0; i < 100000; i++) asm volatile("nop");
+        *LEDR_ptr = 0x0;
+        
+        printf("Loaded best weights from epoch %d (steps: %d)\n", best_epoch, best_steps);
+    } else {
+        printf("No best weights saved yet!\n");
+    }
+}
 
 int main(void) {
     volatile int * pixel_ctrl_ptr = (int *)PIXEL_BUF_CTRL_BASE;
@@ -366,6 +400,8 @@ int main(void) {
                     print_training_stats();  // Print stats when new best reward is achieved
                     printf("NEW BEST REWARD ACHIEVED!\n");
                 }
+                // Automatically save weights when we achieve a new best reward
+                save_best_weights();
 
                 if (current_mode == MODE_TRAIN) {
                     // Ensure the network gets updated
@@ -436,6 +472,17 @@ int main(void) {
 
             // Toggle mode
             current_mode = (current_mode == MODE_TRAIN) ? MODE_INFERENCE : MODE_TRAIN;
+        }
+
+        if (*KEY_ptr & 0x4) {
+            // Wait for key release (simple debouncing)
+            while (*KEY_ptr & 0x4);
+            
+            if (current_mode == MODE_TRAIN) {
+                save_best_weights();  // In training mode, save current weights as best
+            } else {
+                load_best_weights();  // In inference mode, load the best saved weights
+            }
         }
 
         // Draw the cart-pole and stats
@@ -557,34 +604,39 @@ int sample_action(float probs[ACTION_DIM]) {
 // calculate the reward for the current state
 // Revised calculate_reward function with more stable reward scaling
 float calculate_reward() {
-    // Larger penalty for terminal states to discourage failures
+    // Larger penalty for terminal states
     if (is_terminal_state()) {
-        return -20.0f;  // Reduced from -50.0f to avoid extreme values
+        return -20.0f;
     }
 
     // Angle component - higher reward for balancing pole upright
-    // Cubic reward function instead of quartic for better numerical stability
     float angle_reward = 1.0f - (my_abs(state.pole_angle) / MAX_ANGLE_RAD);
     angle_reward = angle_reward * angle_reward * angle_reward;  // Cubic reward curve
 
-    // Position component - encourage staying near center
+    // Position component - more aggressive center-seeking behavior
     float position_reward = 1.0f - (my_abs(state.cart_position) / 2.0f);
-    position_reward = position_reward * position_reward;  // Squared reward curve
+    position_reward = position_reward * position_reward * position_reward;  // Make cubic instead of squared
 
-    // Velocity penalties - discourage both cart velocity and angular velocity
-    // Added clipping to prevent extreme values
+    // Velocity penalties
     float cart_vel_clipped = my_clamp(state.cart_velocity, -10.0f, 10.0f);
     float ang_vel_clipped = my_clamp(state.pole_angular_vel, -MAX_ANGULAR_VELOCITY, MAX_ANGULAR_VELOCITY);
     
     float vel_penalty = -0.05f * my_abs(cart_vel_clipped);
     float ang_vel_penalty = -0.1f * my_abs(ang_vel_clipped);
 
-    // Living bonus - encourage agent to survive longer
+    // Center-seeking bonus (new) - extra reward for being close to center
+    float center_bonus = 0.0f;
+    if (my_abs(state.cart_position) < 0.5f) {
+        center_bonus = 0.5f * (1.0f - my_abs(state.cart_position) / 0.5f);
+    }
+
+    // Living bonus
     float living_bonus = 0.1f;
 
-    // Combined reward - angle is most important, but scaled down for stability
-    return 15.0f * angle_reward + 5.0f * position_reward + vel_penalty + ang_vel_penalty + living_bonus;
+    // Combined reward with increased position component weight
+    return 15.0f * angle_reward + 10.0f * position_reward + center_bonus + vel_penalty + ang_vel_penalty + living_bonus;
 }
+
 
 // check if the state is terminal (pole fallen or cart out of bounds)
 int is_terminal_state() {
@@ -974,11 +1026,7 @@ void draw_start_screen() {
     draw_text(VGA_WIDTH / 2 - 120, instr_y, "2. PRESS KEY0 TO START/RESTART SIMULATION", WHITE);
 
     instr_y += 10;
-    draw_text(VGA_WIDTH / 2 - 120, instr_y, "3. WATCH THE RL AGENT IMPROVE OVER TIME", WHITE);
-
-    // // Show current hyperparameters
-    // instr_y += 20;
-    // draw_text(VGA_WIDTH / 2 - 100, instr_y, "EXPLORE RATE: 0.35 (OPTIMIZED)", GREEN);
+    draw_text(VGA_WIDTH / 2 - 120, instr_y, "3. PRESS KEY2: TRAIN=SAVE, INFER=LOAD BEST", WHITE);
 }
 
 // Function to print training statistics
@@ -1261,6 +1309,9 @@ void int_to_str(int num, char* str) {
         i--;
     }
 }
+
+
+
 
 // normalize state variables for neural network input
 void normalize_state(float normalized_state[STATE_DIM], CartPoleState *cart_state) {
@@ -1672,6 +1723,7 @@ void init_network() {
 float log_prob(float probs[ACTION_DIM], int action) {
     return my_log(probs[action]);
 }
+
 // More robust compute_advantages function
 void compute_advantages() {
     // First compute returns (discounted sum of future rewards)
