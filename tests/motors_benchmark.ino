@@ -1,9 +1,9 @@
 #include <Adafruit_MotorShield.h>
 
 // Motor terminal definitions
-#define MOTOR_A_TERMINAL 1
-#define MOTOR_B_TERMINAL 2
-#define MOTOR_C_TERMINAL 3
+#define MOTOR_A_TERMINAL 3
+#define MOTOR_B_TERMINAL 1
+#define MOTOR_C_TERMINAL 2
 #define MOTOR_D_TERMINAL 4
 
 // Settings for the slow turning
