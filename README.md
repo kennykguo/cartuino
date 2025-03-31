@@ -1,8 +1,5 @@
 # Cart-Pole Control System Overview
 
-
-![Alt text](images/IMG_6274.jpg)
-
 ![Alt text](images/IMG_6275.jpg)
 
 
