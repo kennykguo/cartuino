@@ -6,8 +6,10 @@
 ![Alt text](images/IMG_6275.jpg)
 
 ![Alt text](images/IMG_6276.jpg)
-## Arduino Firmware
 
+![14C2168B-D01C-479D-813E-DDE17FA27203_1_102_o](https://github.com/user-attachments/assets/96649d07-6204-4c35-ac03-7eee2bc0ab58)
+
+## Arduino Firmware
 The Arduino firmware manages a physical cart-pole system using sensors and motors. It's responsible for real-time monitoring and actuation while communicating with a host computer.
 
 ### Key Components
