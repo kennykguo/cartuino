@@ -5,7 +5,6 @@
 
 ![Alt text](images/IMG_6275.jpg)
 
-![Alt text](images/IMG_6276.jpg)
 
 https://github.com/user-attachments/assets/ef5dac73-8b63-49de-91de-05aa4505c308
 
