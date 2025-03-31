@@ -1,11 +1,11 @@
 # Cart-Pole Control System Overview
 
 
-![Alt text](images/6274.jpg)
+![Alt text](images/IMG_6274.jpg)
 
-![Alt text](images/6275.jpg)
+![Alt text](images/IMG_6275.jpg)
 
-![Alt text](images/6276.jpg)
+![Alt text](images/IMG_6276.jpg)
 ## Arduino Firmware
 
 The Arduino firmware manages a physical cart-pole system using sensors and motors. It's responsible for real-time monitoring and actuation while communicating with a host computer.
